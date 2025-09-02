@@ -1,0 +1,38 @@
+# Smart Lock Package - Minimal Conversion
+# Save this as: /config/packages/smartlock_package.yaml
+# Replaces the existing smartlock.yaml automation
+
+input_boolean:
+  smart_lock_auto_unlock:
+    name: "Auto Unlock on Arrival"
+    icon: mdi:lock-open
+    initial: true
+
+automation:
+  - id: unlock_door_on_arrival
+    alias: "Unlock door when either iPhone arrives home"
+    description: "Auto unlock front door when either phone enters home zone"
+    triggers:
+      - trigger: zone
+        entity_id: device_tracker.iphone15
+        zone: zone.home
+        event: enter
+      - trigger: zone
+        entity_id: device_tracker.work_iphone
+        zone: zone.home
+        event: enter
+    conditions:
+      - condition: state
+        entity_id: input_boolean.smart_lock_auto_unlock
+        state: "on"
+    actions:
+      - action: lock.unlock
+        target:
+          entity_id: lock.aqara_smart_lock_u100_lock
+      - action: notify.mobile_app_iphone15
+        data:
+          message: The front door was unlocked.
+      - action: notify.mobile_app_rrvqklh23h_iphone
+        data:
+          message: The front door was unlocked.
+    mode: single

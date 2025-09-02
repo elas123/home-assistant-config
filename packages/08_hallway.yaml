@@ -1,0 +1,183 @@
+################################################################################
+# 🚪 HALLWAY AUTOMATION PACKAGE v1.1 - FINAL REFACTOR
+# Author: Frank S Elaschat
+# Updated: 2025-08-30
+# Status: ✅ Finalized with diagnostics, instant-on, and restart protection.
+################################################################################
+
+input_boolean:
+  hallway_motion_automation:
+    name: "Hallway Motion Automation"
+    icon: mdi:motion-sensor
+    initial: true
+  hallway_adaptive_override:
+    name: "Hallway Adaptive Override"
+    icon: mdi:tune
+    initial: false
+
+input_number:
+  hallway_motion_timeout:
+    name: "Hallway Motion Timeout"
+    min: 15
+    max: 300
+    step: 15
+    initial: 30
+    unit_of_measurement: "seconds"
+    icon: mdi:timer
+  hallway_override_brightness:
+    name: "Hallway Override Brightness"
+    min: 10
+    max: 100
+    step: 5
+    initial: 100
+    unit_of_measurement: "%"
+    icon: mdi:brightness-7
+  hallway_fallback_day_brightness:
+    name: "Hallway Day Fallback Brightness"
+    min: 10
+    max: 50
+    step: 5
+    initial: 20
+    unit_of_measurement: "%"
+    icon: mdi:brightness-6
+  hallway_fallback_evening_brightness:
+    name: "Hallway Evening Fallback Brightness"
+    min: 10
+    max: 40
+    step: 5
+    initial: 15
+    unit_of_measurement: "%"
+    icon: mdi:brightness-4
+  hallway_fallback_night_brightness:
+    name: "Hallway Night Fallback Brightness"
+    min: 1
+    max: 10
+    step: 1
+    initial: 1
+    unit_of_measurement: "%"
+    icon: mdi:brightness-2
+
+template:
+  - sensor:
+      - name: "Hallway Target Brightness"
+        unique_id: hallway_brightness_main_v2
+        unit_of_measurement: "%"
+        state: >-
+          {% set use_pyscript = is_state('input_boolean.all_rooms_use_pyscript', 'on') %}
+          {% set home_mode = states('input_select.home_state') %}
+          {% set override_active = is_state('input_boolean.hallway_adaptive_override', 'on') %}
+          
+          {% if override_active %}
+            {{ states('input_number.hallway_override_brightness') | int(100) }}
+          {% elif home_mode == 'Night' %}
+            {{ states('input_number.hallway_fallback_night_brightness') | int(1) }}
+          {% elif is_state('input_boolean.adaptive_learning_enabled', 'on') and state_attr('sensor.learned_brightness_hallway', 'using_learned') %}
+            {{ states('sensor.learned_brightness_hallway') | int(15) }}
+          {% elif use_pyscript and states('pyscript.test_hallway_brightness') not in ['unknown', 'unavailable'] %}
+            {{ states('pyscript.test_hallway_brightness') | int(15) }}
+          {% elif is_state('input_boolean.intelligent_lighting_enable', 'on') %}
+            {{ states('sensor.intelligent_brightness_hallway') | int(15) }}
+          {% else %}
+            {% if home_mode in ['Evening', 'Early Morning'] %}
+              {{ states('input_number.hallway_fallback_evening_brightness') | int(15) }}
+            {% elif home_mode == 'Day' %}
+              {{ states('input_number.hallway_fallback_day_brightness') | int(20) }}
+            {% else %}
+              15
+            {% endif %}
+          {% endif %}
+        attributes:
+          calculation_source: >
+            {% set use_pyscript = is_state('input_boolean.all_rooms_use_pyscript', 'on') %}
+            {% set override_active = is_state('input_boolean.hallway_adaptive_override', 'on') %}
+            {% set home_mode = states('input_select.home_state') %}
+
+            {% if override_active %} Manual Override
+            {% elif home_mode == 'Night' %} Night Mode Lock
+            {% elif is_state('input_boolean.adaptive_learning_enabled', 'on') and state_attr('sensor.learned_brightness_hallway', 'using_learned') %} Adaptive Learning
+            {% elif use_pyscript and states('pyscript.test_hallway_brightness') not in ['unknown', 'unavailable'] %} PyScript Engine
+            {% elif is_state('input_boolean.intelligent_lighting_enable', 'on') %} Intelligent System
+            {% else %} Fallback Values
+            {% endif %}
+          confirmations: "{{ state_attr('sensor.learned_brightness_hallway', 'confirmations') | int(0) }}"
+
+      - name: "Hallway ALS Status"
+        state: >-
+          {% set enabled = is_state('input_boolean.hallway_motion_automation', 'on') %}
+          {% set motion = is_state('binary_sensor.hallway_iris_occupancy', 'on') %}
+          {% set brightness = states('sensor.hallway_target_brightness') | int(0) %}
+          {% set source = state_attr('sensor.hallway_target_brightness', 'calculation_source') %}
+          {% set home_mode = states('input_select.home_state') %}
+          {% set error = states('input_text.als_error_hallway') %}
+          {% if error not in ['', 'unknown', 'unavailable'] %} 🚫 Error Present
+          {% elif not enabled %} ⏸️ System Disabled
+          {% elif home_mode == 'Away' %} 🚪 Away Mode
+          {% elif motion %} 💡 Motion Active ({{ brightness }}%)
+          {% else %} 🚪 Ready ({{ source }})
+          {% endif %}
+        icon: >-
+          {% set status = this.state %}
+          {% if '🚫' in status %} mdi:alert-circle
+          {% elif '⏸️' in status %} mdi:pause-circle
+          {% elif '🚪' in status %} mdi:home-export-outline
+          {% elif '💡' in status %} mdi:lightbulb-on
+          {% else %} mdi:door
+          {% endif %}
+
+automation:
+  - id: hallway_motion_lights
+    alias: "Hallway - Motion Lights"
+    description: "Motion-triggered lighting with adaptive/intelligent brightness control"
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.hallway_iris_occupancy
+        to: "on"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.hallway_motion_automation
+        state: "on"
+      - condition: not
+        conditions:
+          - condition: state
+            entity_id: input_select.home_state
+            state: "Away"
+      - condition: template
+        value_template: >
+          {{ trigger.from_state is not none and
+              trigger.from_state.state not in ['unknown', 'unavailable'] }}
+    actions:
+      - action: light.turn_on
+        target:
+          entity_id: light.hallway
+        data:
+          brightness_pct: "{{ states('sensor.hallway_target_brightness') | int }}"
+
+  - id: hallway_motion_off
+    alias: "Hallway - Motion Off"
+    description: "Turns off hallway lights after motion timeout"
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.hallway_iris_occupancy
+        to: "off"
+        for:
+          seconds: "{{ states('input_number.hallway_motion_timeout') | int(30) }}"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.hallway_motion_automation
+        state: "on"
+      - condition: state
+        entity_id: light.hallway
+        state: "on"
+      - condition: not
+        conditions:
+          - condition: state
+            entity_id: input_select.home_state
+            state: "Away"
+    actions:
+      - action: light.turn_off
+        target:
+          entity_id: light.hallway
+        data:
+          transition: 3

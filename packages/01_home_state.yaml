@@ -1,0 +1,550 @@
+################################################################################
+# 🏠 HOME STATE SYSTEM v1.3.1 – FIXED & BEST PRACTICES (2025.8+)
+# Author: Frank S Elaschat
+# Updated: 2025-09-01
+# Notes:
+# - 2025.8+ schema (triggers/conditions/actions; action: not service:)
+# - TZ-safe datetime math (as_datetime); added availability guards
+# - Cleaned indentation, removed stray punctuation, quoted to:/from:
+################################################################################
+
+input_select:
+  home_state:
+    name: "Home State"
+    options:
+      - "Early Morning"
+      - "Day"
+      - "Evening"
+      - "Night"
+      - "Away"
+    icon: mdi:home-variant
+
+input_datetime:
+  evening_mode_start:
+    name: "Evening Mode Start Time"
+    has_date: true
+    has_time: true
+  evening_peak_start:
+    name: "Evening Peak Start Time"
+    has_date: false
+    has_time: true
+    initial: "18:00:00"
+  evening_peak_end:
+    name: "Evening Peak End Time"
+    has_date: false
+    has_time: true
+    initial: "20:00:00"
+  bedtime_ramp_start:
+    name: "Bedtime Ramp Start"
+    has_date: false
+    has_time: true
+    initial: "20:00:00"
+  bedtime_ramp_end:
+    name: "Bedtime Ramp End"
+    has_date: false
+    has_time: true
+    initial: "21:30:00"
+  evening_time_cutoff:
+    name: "Evening Time Cutoff"
+    has_date: false
+    has_time: true
+    initial: "22:00:00"
+
+input_boolean:
+  intelligent_lighting_enable:
+    name: "Intelligent Lighting System"
+    icon: mdi:brain
+  early_morning_gradient_enable:
+    name: "Early Morning Smooth Gradient"
+    icon: mdi:weather-sunrise-up
+    initial: true
+  apple_tv_bedroom_night_control:
+    name: "Apple TV Bedroom Night Control"
+    icon: mdi:apple
+    initial: true
+  ws_working_this_friday:
+    name: "WS Working This Friday"
+    initial: true
+    icon: mdi:calendar-week
+  single_day_off:
+    name: "Single Day Off"
+    icon: mdi:calendar-remove
+    initial: false
+  evening_mode_override:
+    name: "Evening Mode Override"
+    icon: mdi:weather-sunset-down
+    initial: false
+
+input_number:
+  gradient_start_brightness:
+    name: "Start Brightness Early Morning"
+    min: 1
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:brightness-5
+    initial: 10
+  gradient_end_brightness:
+    name: "End Brightness Early Morning"
+    min: 1
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:brightness-4
+    initial: 55
+  gradient_start_temp:
+    name: "Start Temperature Early Morning"
+    min: 1800
+    max: 6500
+    step: 100
+    unit_of_measurement: "K"
+    icon: mdi:thermometer-low
+    initial: 2000
+  gradient_end_temp:
+    name: "End Temperature Early Morning"
+    min: 1800
+    max: 6500
+    step: 100
+    unit_of_measurement: "K"
+    icon: mdi:thermometer-high
+    initial: 4000
+  night_max_brightness:
+    name: "Night Maximum Brightness"
+    min: 1
+    max: 25
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:brightness-2
+    initial: 1
+  evening_peak_brightness:
+    name: "Evening Peak Brightness"
+    min: 30
+    max: 100
+    step: 5
+    initial: 70
+    unit_of_measurement: "%"
+    icon: mdi:brightness-6
+  evening_end_brightness:
+    name: "Evening End Brightness"
+    min: 10
+    max: 60
+    step: 5
+    initial: 25
+    unit_of_measurement: "%"
+    icon: mdi:brightness-3
+  evening_temp_start:
+    name: "Evening Start Temperature"
+    min: 3000
+    max: 5000
+    step: 100
+    initial: 4000
+    unit_of_measurement: "K"
+    icon: mdi:thermometer
+  evening_temp_end:
+    name: "Evening End Temperature"
+    min: 1800
+    max: 3500
+    step: 100
+    initial: 2200
+    unit_of_measurement: "K"
+    icon: mdi:thermometer-low
+  night_temp:
+    name: "Night Temperature"
+    min: 1800
+    max: 2500
+    step: 50
+    initial: 1800
+    unit_of_measurement: "K"
+    icon: mdi:fire
+  current_day_threshold:
+    name: "Day Threshold (Sun Elevation)"
+    min: -20
+    max: 30
+    step: 0.5
+    initial: 10
+    unit_of_measurement: "°"
+    icon: mdi:weather-sunny
+  manual_evening_elevation_setting:
+    name: "Learned Evening Elevation"
+    min: -10
+    max: 10
+    step: 0.5
+    initial: 4
+    unit_of_measurement: "°"
+    icon: mdi:ruler
+  sun_elevation_history:
+    name: "Sun Elevation History"
+    min: -90
+    max: 90
+    step: 0.01
+    initial: 0
+    unit_of_measurement: "°"
+    icon: mdi:history
+
+template:
+  - binary_sensor:
+      - name: "Working Today"
+        availability: >-
+          {{ states('input_boolean.ws_working_this_friday') not in ['unknown','unavailable']
+             and states('input_boolean.single_day_off') not in ['unknown','unavailable'] }}
+        state: >-
+          {% set motion_detected = states('pyscript.motion_work_day_detected') %}
+          {% if motion_detected not in ['unknown','unavailable'] %}
+            {{ motion_detected == 'on' }}
+          {% else %}
+            {% set today = now().weekday() %}
+            {% set is_weekday = today < 5 %}
+            {% set is_friday = today == 4 %}
+            {% set working_friday = is_state('input_boolean.ws_working_this_friday','on') %}
+            {% set single_day_off = is_state('input_boolean.single_day_off','on') %}
+            {{ is_weekday and (not is_friday or working_friday) and not single_day_off }}
+          {% endif %}
+        icon: >-
+          {{ 'mdi:briefcase' if is_state(this.entity_id,'on') else 'mdi:home' }}
+
+      - name: "Both Phones Home"
+        availability: >-
+          {{ states('device_tracker.iphone15') not in ['unknown','unavailable']
+             and states('device_tracker.work_iphone') not in ['unknown','unavailable'] }}
+        state: >-
+          {{ is_state('device_tracker.iphone15','home')
+             and is_state('device_tracker.work_iphone','home') }}
+        icon: mdi:account-multiple
+
+      - name: "Any Phone Away"
+        availability: >-
+          {{ states('device_tracker.iphone15') not in ['unknown','unavailable']
+             and states('device_tracker.work_iphone') not in ['unknown','unavailable'] }}
+        state: >-
+          {{ not (is_state('device_tracker.iphone15','home')
+                  and is_state('device_tracker.work_iphone','home')) }}
+        icon: mdi:account-off
+
+      - name: "ALS Morning Transition Ready"
+        availability: >-
+          {{ states('input_boolean.sleep_in_ramp_active') not in ['unknown','unavailable']
+             and states('input_datetime.ramp_start_time') not in ['unknown','unavailable']
+             and states('sensor.sun_elevation_frequent') not in ['unknown','unavailable']
+             and states('input_number.current_day_threshold') not in ['unknown','unavailable'] }}
+        state: >-
+          {% set ramp_active = is_state('input_boolean.sleep_in_ramp_active','on') %}
+          {% set ramp_start_str = states('input_datetime.ramp_start_time') %}
+          {% set sun_ok = states('sensor.sun_elevation_frequent')|float(0)
+                           >= states('input_number.current_day_threshold')|float(10) %}
+          {% if not ramp_active or ramp_start_str in ['unknown','unavailable',''] %}
+            false
+          {% else %}
+            {% set ramp_start = as_datetime(ramp_start_str) %}
+            {% set sixty_passed = (now() - ramp_start).total_seconds() >= 3600 %}
+            {{ sixty_passed and sun_ok }}
+          {% endif %}
+        icon: mdi:clock-check-outline
+
+  - sensor:
+      - name: "Sun Elevation Frequent"
+        availability: >-
+          {{ states('sun.sun') not in ['unknown','unavailable'] }}
+        state: "{{ state_attr('sun.sun','elevation')|float(0)|round(2) }}"
+        unit_of_measurement: "°"
+        icon: mdi:weather-sunny
+
+      - name: "Sun Elevation Rate"
+        availability: >-
+          {{ states('sun.sun') not in ['unknown','unavailable']
+             and states('input_number.sun_elevation_history') not in ['unknown','unavailable'] }}
+        state: >-
+          {% set current = state_attr('sun.sun','elevation')|float(0) %}
+          {% set prev = states('input_number.sun_elevation_history')|float(current) %}
+          {{ ((current - prev) / 15) | round(4) }}
+        unit_of_measurement: "°/min"
+        icon: mdi:trending-up
+        attributes:
+          current_elevation: "{{ state_attr('sun.sun','elevation')|float(0)|round(2) }}"
+          previous_elevation: "{{ states('input_number.sun_elevation_history')|float(0)|round(2) }}"
+
+      - name: "Minutes to Day Mode Elevation"
+        availability: >-
+          {{ states('sun.sun') not in ['unknown','unavailable']
+             and states('input_number.current_day_threshold') not in ['unknown','unavailable'] }}
+        state: >-
+          {% set cur = state_attr('sun.sun','elevation')|float(0) %}
+          {% set tgt = states('input_number.current_day_threshold')|float(10) %}
+          {% if cur >= tgt %}
+            0
+          {% else %}
+            {% set sunrise = as_datetime(state_attr('sun.sun','next_rising')) %}
+            {% set hours_to = (sunrise - now()).total_seconds() / 3600 %}
+            {% if 0 < hours_to < 18 %}
+              {% set season = states('sensor.current_season') %}
+              {% set pad = 30 if season == 'Summer' else 60 if season == 'Winter' else 45 %}
+              {{ ((hours_to * 60) + pad) | round(0) }}
+            {% else %}
+              {% set rate = states('sensor.sun_elevation_rate')|float(0.03) %}
+              {% if 0.005 < rate < 0.2 %}
+                {{ ((tgt - cur) / rate) | round(0) }}
+              {% else %} 999 {% endif %}
+            {% endif %}
+          {% endif %}
+        unit_of_measurement: "min"
+        icon: mdi:clock-outline
+
+      - name: "Current Season"
+        state: >-
+          {% set m = now().month %}
+          {% if m in [12,1,2] %}Winter{% elif m in [3,4,5] %}Spring
+          {% elif m in [6,7,8] %}Summer{% else %}Fall{% endif %}
+        icon: >-
+          {% set s = this.state %}
+          {% if s == 'Winter' %} mdi:snowflake
+          {% elif s == 'Spring' %} mdi:leaf
+          {% elif s == 'Summer' %} mdi:weather-sunny
+          {% else %} mdi:weather-autumn
+          {% endif %}
+
+      - name: "Calculated Home Mode"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown','unavailable']
+             and states('sensor.sun_elevation_frequent') not in ['unknown','unavailable']
+             and states('input_number.current_day_threshold') not in ['unknown','unavailable'] }}
+        state: >-
+          {% set h = now().hour %}
+          {% set m = now().minute %}
+          {% set sun = states('sensor.sun_elevation_frequent')|float(0) %}
+          {% set day_th = states('input_number.current_day_threshold')|float(10) %}
+          {% set workday = is_state('binary_sensor.working_today','on') %}
+          {% set cutoff = states('input_datetime.evening_time_cutoff') %}
+          {% set learned = states('input_number.manual_evening_elevation_setting')|float(4) %}
+          {% set e_override = is_state('input_boolean.evening_mode_override','on') %}
+          {% if e_override or now() > today_at(cutoff) or (sun < learned and h >= 15) %}
+            Evening
+          {% elif workday and ((h == 4 and m >= 50) or h == 5) %}
+            Early Morning
+          {% elif sun >= day_th %}
+            Day
+          {% elif is_state('input_select.home_state','Early Morning') %}
+            Early Morning
+          {% else %}
+            Evening
+          {% endif %}
+        icon: >-
+          {% set s = this.state %}
+          {% if s == 'Early Morning' %} mdi:weather-dawn
+          {% elif s == 'Day' %} mdi:weather-sunny
+          {% elif s == 'Evening' %} mdi:weather-sunset
+          {% else %} mdi:weather-night
+          {% endif %}
+
+      - name: "Evening Mode Advisory"
+        availability: >-
+          {{ states('sun.sun') not in ['unknown','unavailable'] }}
+        state: >-
+          {% set el = state_attr('sun.sun','elevation')|float(0) %}
+          {% if el < -6 %} After Sunset
+          {% elif el < 0 %} Sunset Occurring
+          {% elif el < 10 %} Approaching Sunset
+          {% else %} Daylight
+          {% endif %}
+        icon: mdi:weather-sunset
+
+automation:
+  - id: home_state_evaluation
+    alias: "Home State Evaluation"
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+      - trigger: state
+        entity_id:
+          - binary_sensor.working_today
+          - device_tracker.iphone15
+          - device_tracker.work_iphone
+    conditions:
+      - condition: template
+        value_template: "{{ not is_state('input_select.home_state','Night') }}"
+      - condition: template
+        value_template: "{{ not is_state('input_boolean.manual_home_state_override','on') }}"
+      - condition: template
+        value_template: "{{ states('sensor.calculated_home_mode') not in ['unknown','unavailable'] }}"
+    actions:
+      - action: script.evaluate_home_mode
+
+  - id: apple_tv_night_mode_trigger
+    alias: "Apple TV → Night Mode (20:00–23:00 Only)"
+    triggers:
+      - trigger: state
+        entity_id: media_player.bedroom
+        to: ["playing","paused","idle"]
+        from: ["off","unknown","unavailable","standby"]
+        for:
+          seconds: 8
+    conditions:
+      - condition: time
+        after: "20:00:00"
+        before: "23:00:00"
+      - condition: state
+        entity_id: binary_sensor.both_phones_home
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.apple_tv_bedroom_night_control
+        state: "on"
+      - condition: template
+        value_template: "{{ not is_state('input_select.home_state','Night') }}"
+    actions:
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.home_state
+        data:
+          option: "Night"
+
+  - id: night_mode_11pm_failsafe
+    alias: "Night Mode 11 PM Failsafe"
+    triggers:
+      - trigger: time
+        at: "23:00:00"
+    conditions:
+      - condition: state
+        entity_id: binary_sensor.both_phones_home
+        state: "on"
+      - condition: template
+        value_template: "{{ not is_state('input_select.home_state','Night') }}"
+    actions:
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.home_state
+        data:
+          option: "Night"
+
+  - id: learn_evening_transition_time
+    alias: "Learn Evening Transition Time"
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.evening_mode_override
+        to: "on"
+    actions:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.manual_evening_elevation_setting
+        data:
+          value: "{{ state_attr('sun.sun','elevation') }}"
+
+  - id: reset_evening_override_at_night
+    alias: "Reset Evening Override at Night"
+    triggers:
+      - trigger: state
+        entity_id: input_select.home_state
+        to: "Night"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.evening_mode_override
+        state: "on"
+    actions:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.evening_mode_override
+
+  - id: als_end_early_morning_mode
+    alias: "ALS - Transition from Early Morning to Day"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.als_morning_transition_ready
+        to: "on"
+    conditions:
+      - condition: state
+        entity_id: input_select.home_state
+        state: "Early Morning"
+    actions:
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.home_state
+        data:
+          option: "Day"
+
+  - id: sun_elevation_history_tracker
+    alias: "Sun Elevation History Tracker"
+    description: "Updates sun elevation history every 15 minutes for rate calculation"
+    triggers:
+      - trigger: time_pattern
+        minutes: "/15"
+    actions:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.sun_elevation_history
+        data:
+          value: "{{ state_attr('sun.sun','elevation') | float(0) }}"
+
+  - id: enhanced_8am_failsafe
+    alias: "Enhanced 8 AM Failsafe"
+    description: "Force Day mode at 8 AM if not already in Day or Away mode"
+    triggers:
+      - trigger: time
+        at: "08:00:00"
+    conditions:
+      - condition: not
+        conditions:
+          - condition: state
+            entity_id: input_select.home_state
+            state: ["Day","Away"]
+      - condition: state
+        entity_id: binary_sensor.both_phones_home
+        state: "on"
+    actions:
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.home_state
+        data:
+          option: "Day"
+      - action: logbook.log
+        data:
+          name: "8 AM Failsafe"
+          message: "WARNING: Forced Day mode - system was stuck in {{ trigger.from_state.state }} mode"
+
+script:
+  evaluate_home_mode:
+    alias: "Evaluate Home Mode"
+    sequence:
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ is_state('binary_sensor.any_phone_away','on') }}"
+            sequence:
+              - action: input_select.select_option
+                target:
+                  entity_id: input_select.home_state
+                data:
+                  option: "Away"
+          - conditions:
+              - condition: template
+                value_template: "{{ is_state('binary_sensor.both_phones_home','on') and is_state('input_select.home_state','Away') }}"
+            sequence:
+              - action: input_select.select_option
+                target:
+                  entity_id: input_select.home_state
+                data:
+                  option: "{{ states('sensor.calculated_home_mode') if states('sensor.calculated_home_mode') not in ['unknown','unavailable'] else 'Day' }}"
+          - conditions:
+              - condition: template
+                value_template: "{{ is_state('input_select.home_state','Night') }}"
+            sequence:
+              - stop: "Night mode protected"
+          - conditions:
+              - condition: template
+                value_template: "{{ is_state('input_boolean.sleep_in_ramp_active','on') }}"
+            sequence:
+              - stop: "Early Morning ramp protected"
+          - conditions:
+              - condition: template
+                value_template: "{{ states('input_select.home_state') != states('sensor.calculated_home_mode') }}"
+            sequence:
+              - action: input_select.select_option
+                target:
+                  entity_id: input_select.home_state
+                data:
+                  option: "{{ states('sensor.calculated_home_mode') if states('sensor.calculated_home_mode') not in ['unknown','unavailable'] else 'Day' }}"
+      - if:
+          - condition: template
+            value_template: "{{ states('sensor.calculated_home_mode') == 'Evening' and not is_state('input_select.home_state','Evening') }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.evening_mode_start
+            data:
+              datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"

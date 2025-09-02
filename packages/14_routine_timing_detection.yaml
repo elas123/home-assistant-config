@@ -1,0 +1,130 @@
+################################################################################
+# ROUTINE TIMING DETECTION v1.0 - ALS Integration
+# Author: Frank S Elaschat
+# Created: 2025-09-02
+# Status: ✅ Complete Implementation
+# Purpose: Detect routine completion and store timing data in ALS system
+################################################################################
+
+automation:
+  # Routine completion detection
+  - id: routine_timing_capture
+    alias: "Routine Timing - Completion Detection"
+    description: "Detects routine completion when living room lights are turned off during Early Morning mode"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: 
+          - light.lamp_1
+          - light.lamp_2
+        to: "off"
+        for:
+          seconds: 5
+    conditions:
+      - condition: state
+        entity_id: input_select.home_state
+        state: "Early Morning"
+      # Ensure both living room lights are actually off
+      - condition: state
+        entity_id: light.lamp_1
+        state: "off"
+      - condition: state
+        entity_id: light.lamp_2
+        state: "off"
+      # Don't capture if we just turned them off within 2 minutes (avoid multiple captures)
+      - condition: template
+        value_template: >
+          {{ (now() - states.light.lamp_1.last_changed).total_seconds() > 30 and
+             (now() - states.light.lamp_2.last_changed).total_seconds() > 30 }}
+    actions:
+      - variables:
+          completion_time: "{{ now().strftime('%H:%M:%S') }}"
+          day_type: >
+            {{ 'work' if is_state('binary_sensor.workday_sensor', 'on') else 'weekend' }}
+          
+      - action: pyscript.store_routine_timing
+        data:
+          completion_time_str: "{{ completion_time }}"
+          confidence_pct: 90.0
+          
+      - action: logbook.log
+        data:
+          name: "Routine Learning"
+          message: "📊 Captured routine completion at {{ completion_time }} ({{ day_type }} day)"
+          
+      # Optional: Send notification for debugging/awareness
+      - if:
+          - condition: state
+            entity_id: input_boolean.als_verbose_logging
+            state: "on"
+        then:
+          - action: notify.persistent_notification
+            data:
+              title: "🎯 Routine Learning"
+              message: "Learned routine completion at {{ completion_time }} on {{ day_type }} day"
+              data:
+                tag: "routine_learning"
+
+  # Manual routine completion trigger (for testing/corrections)
+  - id: manual_routine_completion
+    alias: "Routine Timing - Manual Completion"
+    description: "Manually trigger routine completion capture"
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.manual_routine_capture
+        to: "on"
+    conditions:
+      - condition: state
+        entity_id: input_select.home_state
+        state: "Early Morning"
+    actions:
+      - variables:
+          completion_time: "{{ now().strftime('%H:%M:%S') }}"
+          
+      - action: pyscript.store_routine_timing
+        data:
+          completion_time_str: "{{ completion_time }}"
+          confidence_pct: 75.0  # Lower confidence for manual entries
+          
+      - action: logbook.log
+        data:
+          name: "Routine Learning"
+          message: "📊 Manual routine completion captured at {{ completion_time }}"
+          
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.manual_routine_capture
+
+# Helper input boolean for manual testing
+input_boolean:
+  manual_routine_capture:
+    name: "Manual Routine Capture"
+    initial: false
+    icon: mdi:clock-check
+
+# Sensor to show current routine learning status  
+sensor:
+  - platform: template
+    sensors:
+      routine_learning_status:
+        friendly_name: "Routine Learning Status"
+        value_template: >
+          {% if is_state('input_select.home_state', 'Early Morning') %}
+            Monitoring for completion
+          {% else %}
+            Waiting for Early Morning mode
+          {% endif %}
+        attribute_templates:
+          learning_active: >
+            {{ is_state('input_select.home_state', 'Early Morning') }}
+          current_day_type: >
+            {{ 'work' if is_state('binary_sensor.workday_sensor', 'on') else 'weekend' }}
+          last_prediction: >
+            {# This would be populated by the prediction service #}
+            Unknown
+        icon: >
+          {% if is_state('input_select.home_state', 'Early Morning') %}
+            mdi:clock-check
+          {% else %}
+            mdi:clock-outline
+          {% endif %}

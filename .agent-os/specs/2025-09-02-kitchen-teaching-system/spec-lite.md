@@ -1,0 +1,3 @@
+# Spec Summary (Lite)
+
+Implement a machine learning-based teaching system that learns behavioral patterns from actual light usage to predict optimal timing for Home Assistant lighting automation, replacing fixed schedules and unreliable sensor dependencies with personalized, adaptive intelligence. The system will monitor when users turn off living room lights during Early Morning mode to build pattern databases and predict routine end times with >80% accuracy, eliminating current inconsistencies with sun elevation calculations and device tracker delays.

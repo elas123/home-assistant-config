@@ -1,0 +1,5 @@
+# Product Mission (Lite)
+
+The Home Assistant Adaptive Automation System is an advanced home automation platform that helps homeowners achieve effortless daily comfort through intelligent lighting, presence detection, and environmental control by providing context-aware, self-learning automations that eliminate the need for constant manual adjustments and debugging.
+
+This comprehensive system serves single households focused on reliability and daily comfort over novelty features. Unlike traditional smart home platforms requiring manual configuration, our Adaptive Learning System automatically learns lighting preferences from user behavior, weather conditions, and seasonal patterns, while the Intelligent Lighting System coordinates multi-source presence detection, work schedules, and circadian rhythm support to deliver truly autonomous home automation with minimal maintenance.

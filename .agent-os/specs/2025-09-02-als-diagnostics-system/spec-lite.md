@@ -1,0 +1,3 @@
+# Spec Summary (Lite)
+
+Implement a comprehensive monitoring and alert system for Home Assistant's Adaptive Learning System that automatically captures and classifies errors by room, provides visual health indicators (🟩/🟨/🟥 health pills), and sends intelligent notifications with deep links to diagnostic dashboards. The system includes automated error management, configurable retention policies, and room-scoped diagnostics to ensure reliable operation of complex smart home automation without manual log monitoring.

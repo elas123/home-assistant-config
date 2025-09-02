@@ -1,0 +1,288 @@
+################################################################################
+# LIVING ROOM SMART LIGHTS v3.3 – OPTIMIZED RAMP LOGIC
+# Author: Frank S Elaschat
+# Updated: 2025-09-01
+# Status: FIXED - Rewrote evening ramp script to be efficient and reliable.
+#         Corrected indentation for lamp turn-off learning automation.
+################################################################################
+
+input_boolean:
+  livingroom_auto_lights_enable:
+    name: "Living Room Auto Lights"
+    icon: mdi:lightbulb-auto
+    initial: true
+  livingroom_storm_override_enable:
+    name: "Living Room Storm Override"
+    icon: mdi:weather-lightning-rainy
+    initial: true
+
+input_number:
+  livingroom_fallback_day_brightness:
+    name: "Living Room Day Fallback Brightness"
+    min: 0
+    max: 100
+    step: 5
+    initial: 0
+    unit_of_measurement: "%"
+    icon: mdi:brightness-6
+  livingroom_fallback_evening_brightness:
+    name: "Living Room Evening Fallback Brightness"
+    min: 20
+    max: 80
+    step: 5
+    initial: 40
+    unit_of_measurement: "%"
+    icon: mdi:brightness-4
+  livingroom_fallback_night_brightness:
+    name: "Living Room Night Fallback Brightness"
+    min: 1
+    max: 20
+    step: 1
+    initial: 1
+    unit_of_measurement: "%"
+    icon: mdi:brightness-2
+  livingroom_storm_cloud_threshold:
+    name: "Living Room Storm Cloud Threshold"
+    min: 60
+    max: 95
+    step: 5
+    initial: 80
+    unit_of_measurement: "%"
+    icon: mdi:weather-cloudy
+
+template:
+  - sensor:
+      - name: "Living Room Target Brightness"
+        unique_id: living_room_brightness_main_v2
+        unit_of_measurement: "%"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% set use_pyscript = is_state('input_boolean.all_rooms_use_pyscript', 'on') %}
+          {% set home_mode = states('input_select.home_state') %}
+          
+          {% if home_mode == 'Evening' and is_state('input_boolean.living_room_evening_ramp_enabled', 'on') %}
+            {{ states('input_number.living_room_ramp_brightness_output') | int(20) }}
+          {% elif is_state('input_boolean.adaptive_learning_enabled', 'on') and state_attr('sensor.learned_brightness_living_room', 'using_learned') %}
+            {{ states('sensor.learned_brightness_living_room') | int(50) }}
+          {% elif use_pyscript and states('pyscript.test_living_room_brightness') not in ['unknown', 'unavailable'] %}
+            {{ states('pyscript.test_living_room_brightness') | int(50) }}
+          {% elif is_state('input_boolean.intelligent_lighting_enable', 'on') %}
+            {{ states('sensor.intelligent_brightness_living_room') | int(50) }}
+          {% else %}
+            {% set storm_override = is_state('input_boolean.livingroom_storm_override_enable', 'on') %}
+            {% set cloud_coverage = state_attr('weather.pirateweather', 'cloud_coverage') | int(0) %}
+            {% set storm_threshold = states('input_number.livingroom_storm_cloud_threshold') | int(80) %}
+            {% set is_storm_conditions = cloud_coverage >= storm_threshold %}
+            {% if home_mode == 'Night' %}
+              {{ states('input_number.livingroom_fallback_night_brightness') | int(1) }}
+            {% elif home_mode == 'Day' %}
+              {{ 30 if storm_override and is_storm_conditions else states('input_number.livingroom_fallback_day_brightness') | int(0) }}
+            {% else %}
+              {{ states('input_number.livingroom_fallback_evening_brightness') | int(40) }}
+            {% endif %}
+          {% endif %}
+        attributes:
+          calculation_source: >-
+            {% set use_pyscript = is_state('input_boolean.all_rooms_use_pyscript', 'on') %}
+            {% set home_mode = states('input_select.home_state') %}
+
+            {% if home_mode == 'Evening' and is_state('input_boolean.living_room_evening_ramp_enabled', 'on') %} Intelligent Ramp
+            {% elif is_state('input_boolean.adaptive_learning_enabled', 'on') and state_attr('sensor.learned_brightness_living_room', 'using_learned') %} Adaptive Learning
+            {% elif use_pyscript and states('pyscript.test_living_room_brightness') not in ['unknown', 'unavailable'] %} PyScript Engine
+            {% elif is_state('input_boolean.intelligent_lighting_enable', 'on') %} Intelligent System
+            {% else %} Fallback Values
+            {% endif %}
+
+      - name: "Living Room ALS Status"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% set enabled = is_state('input_boolean.livingroom_auto_lights_enable', 'on') %}
+          {% set brightness = states('sensor.living_room_target_brightness') | int(0) %}
+          {% set source = state_attr('sensor.living_room_target_brightness', 'calculation_source') %}
+          {% set home_mode = states('input_select.home_state') %}
+          {% set error = states('input_text.als_error_livingroom') %}
+          {% if error not in ['', 'unknown', 'unavailable'] %} Error Present
+          {% elif not enabled %} System Disabled
+          {% elif home_mode == 'Away' %} Away Mode
+          {% elif brightness == 0 %} Lights Off ({{ source }})
+          {% else %} {{ brightness }}% ({{ source }})
+          {% endif %}
+        icon: >-
+          {% set status = this.state %}
+          {% if 'Error' in status %} mdi:alert-circle
+          {% elif 'System Disabled' in status %} mdi:pause-circle
+          {% elif 'Away Mode' in status %} mdi:home-export-outline
+          {% elif 'Lights Off' in status %} mdi:weather-sunny
+          {% else %} mdi:lightbulb-on
+          {% endif %}
+
+automation:
+  - id: livingroom_auto_lights_main
+    alias: "Living Room - Auto Control"
+    description: "Controls living room lighting based on home state and weather"
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: input_select.home_state
+      - trigger: state
+        entity_id: sensor.living_room_target_brightness
+    conditions:
+      - condition: state
+        entity_id: input_boolean.livingroom_auto_lights_enable
+        state: "on"
+      - condition: not
+        conditions:
+          - condition: state
+            entity_id: input_select.home_state
+            state: "Away"
+    actions:
+      - variables:
+          target_brightness: "{{ states('sensor.living_room_target_brightness') | int(0) }}"
+          target_temperature: "{{ states('sensor.evening_temperature_ramp') | int(3000) }}"
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ target_brightness > 0 }}"
+            sequence:
+              - action: light.turn_on
+                target:
+                  entity_id:
+                    - light.lamp_1
+                    - light.lamp_2
+                data:
+                  brightness_pct: "{{ target_brightness }}"
+                  color_temp_kelvin: "{{ target_temperature }}"
+          - conditions:
+              - condition: template
+                value_template: "{{ target_brightness == 0 }}"
+            sequence:
+              - action: light.turn_off
+                target:
+                  entity_id:
+                    - light.lamp_1
+                    - light.lamp_2
+                data:
+                  transition: 5
+
+  - id: living_room_weather_transition
+    alias: "Living Room - Smooth Weather Transition"
+    description: "Slowly adjusts brightness when weather conditions change and lights are already on."
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: sensor.living_room_target_brightness
+    conditions:
+      - condition: state
+        entity_id: input_boolean.enable_weather_transitions
+        state: "on"
+      - condition: or
+        conditions:
+          - condition: state
+            entity_id: light.lamp_1
+            state: "on"
+          - condition: state
+            entity_id: light.lamp_2
+            state: "on"
+      - condition: state
+        entity_id: input_select.home_state
+        state: "Day"
+      - condition: template
+        value_template: "{{ (trigger.to_state.state | int(0) - trigger.from_state.state | int(0)) | abs > 10 }}"
+    actions:
+      - variables:
+          transition_seconds: "{{ states('input_number.weather_transition_duration_minutes') | int(5) * 60 }}"
+      - action: light.turn_on
+        target:
+          entity_id:
+            - light.lamp_1
+            - light.lamp_2
+        data:
+          brightness_pct: "{{ trigger.to_state.state | int(0) }}"
+          transition: "{{ transition_seconds }}"
+
+  - id: living_room_evening_ramp_control
+    alias: "Living Room - Evening Ramp Control"
+    description: "Starts or stops the evening lighting ramp based on home state."
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_select.home_state
+        to: "Evening"
+        id: "start"
+      - trigger: state
+        entity_id: input_select.home_state
+        from: "Evening"
+        id: "stop"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.living_room_evening_ramp_enabled
+        state: "on"
+    actions:
+      - choose:
+          - conditions:
+              - condition: trigger
+                id: "start"
+            sequence:
+              - action: script.turn_on
+                target:
+                  entity_id: script.als_living_room_evening_ramp
+          - conditions:
+              - condition: trigger
+                id: "stop"
+            sequence:
+              - action: script.turn_off
+                target:
+                  entity_id: script.als_living_room_evening_ramp
+
+script:
+  als_living_room_evening_ramp:
+    alias: "ALS - Living Room Evening Ramp"
+    description: "Runs a smooth, reliable ramp from evening start to a fixed 8 PM end time."
+    mode: restart
+    sequence:
+      - variables:
+          start_brightness: "{{ states('input_number.living_room_evening_start_brightness') | int(50) }}"
+          end_brightness: "{{ states('input_number.living_room_evening_end_brightness') | int(20) }}"
+          start_temp: "{{ states('input_number.living_room_evening_start_temp') | int(2700) }}"
+          end_temp: "{{ states('input_number.living_room_evening_end_temp') | int(2200) }}"
+          end_time: "{{ today_at('20:00:00') }}"
+          transition_duration: "{{ [0, (end_time - now()).total_seconds()] | max | int }}"
+      - condition: template
+        value_template: "{{ transition_duration > 1 }}"
+      - action: light.turn_on
+        target:
+          entity_id:
+            - light.lamp_1
+            - light.lamp_2
+        data:
+          brightness_pct: "{{ start_brightness }}"
+          color_temp_kelvin: "{{ start_temp }}"
+      - action: light.turn_on
+        target:
+          entity_id:
+            - light.lamp_1
+            - light.lamp_2
+        data:
+          brightness_pct: "{{ end_brightness }}"
+          color_temp_kelvin: "{{ end_temp }}"
+          transition: "{{ transition_duration }}"
+
+  living_room_lamp_turnoff_learning:
+    alias: "Living Room - Lamp Turn-off Learning"
+    description: "Monitor lamp turn-offs for morning ramp completion learning"
+    mode: restart
+    sequence:
+      - condition: state
+        entity_id: input_boolean.sleep_in_ramp_system_enable
+        state: "on"
+      - condition: state
+        entity_id:
+          - light.lamp_1
+          - light.lamp_2
+        state: "off"
+      - action: pyscript.living_room_lamp_turned_off
+        data:
+          lamp: "lamp_off_trigger"
+          timestamp: "{{ now().isoformat() }}"

@@ -1,0 +1,209 @@
+################################################################################
+# 🛏️ BEDROOM/CLOSET PACKAGE v1.2 - CONSOLIDATED & EXPLAINED
+# Author: Frank S Elaschat
+# Updated: 2025-09-01
+# Status: ✅ Finalized with consolidated logic and explanations.
+################################################################################
+
+input_boolean:
+  bedroom_motion_automation:
+    name: "Bedroom Motion Automation"
+    icon: mdi:motion-sensor
+    initial: true
+  bedroom_adaptive_override:
+    name: "Bedroom Adaptive Override"
+    icon: mdi:tune
+    initial: false
+
+input_number:
+  bedroom_motion_timeout:
+    name: "Bedroom Motion Timeout"
+    min: 15
+    max: 300
+    step: 15
+    initial: 30
+    unit_of_measurement: "seconds"
+    icon: mdi:timer
+  bedroom_override_brightness:
+    name: "Bedroom Override Brightness"
+    min: 30
+    max: 100
+    step: 10
+    initial: 100
+    unit_of_measurement: "%"
+    icon: mdi:brightness-7
+  bedroom_fallback_day_brightness:
+    name: "Bedroom Day Fallback Brightness"
+    min: 30
+    max: 100
+    step: 5
+    initial: 60
+    unit_of_measurement: "%"
+    icon: mdi:brightness-6
+  bedroom_fallback_evening_brightness:
+    name: "Bedroom Evening Fallback Brightness"
+    min: 20
+    max: 80
+    step: 5
+    initial: 40
+    unit_of_measurement: "%"
+    icon: mdi:brightness-4
+  bedroom_fallback_night_brightness:
+    name: "Bedroom Night Fallback Brightness"
+    min: 1
+    max: 10
+    step: 1
+    initial: 1
+    unit_of_measurement: "%"
+    icon: mdi:brightness-2
+
+template:
+  - sensor:
+      - name: "Bedroom Target Brightness"
+        unique_id: bedroom_target_brightness_als
+        unit_of_measurement: "%"
+        state: >-
+          {% set use_pyscript = is_state('input_boolean.all_rooms_use_pyscript', 'on') %}
+          {% set home_mode = states('input_select.home_state') %}
+          {% set override_active = is_state('input_boolean.bedroom_adaptive_override', 'on') %}
+
+          {% if override_active %}
+            {{ states('input_number.bedroom_override_brightness') | int(100) }}
+          {% elif home_mode == 'Night' %}
+            {{ states('input_number.bedroom_fallback_night_brightness') | int(1) }}
+          {% elif use_pyscript and states('pyscript.test_bedroom_brightness') not in ['unknown', 'unavailable'] %}
+            {{ states('pyscript.test_bedroom_brightness') | int(40) }}
+          {% elif is_state('input_boolean.adaptive_learning_enabled', 'on') and state_attr('sensor.learned_brightness_bedroom', 'using_learned') %}
+            {{ states('sensor.learned_brightness_bedroom') | int(40) }}
+          {% elif is_state('input_boolean.intelligent_lighting_enable', 'on') %}
+            {{ states('sensor.intelligent_brightness_bedroom') | int(40) }}
+          {% else %}
+            {% if home_mode in ['Evening', 'Early Morning'] %}
+              {{ states('input_number.bedroom_fallback_evening_brightness') | int(40) }}
+            {% elif home_mode == 'Day' %}
+              {{ states('input_number.bedroom_fallback_day_brightness') | int(60) }}
+            {% else %}
+              40
+            {% endif %}
+          {% endif %}
+        attributes:
+          calculation_source: >
+            {% set use_pyscript = is_state('input_boolean.all_rooms_use_pyscript', 'on') %}
+            {% set override_active = is_state('input_boolean.bedroom_adaptive_override', 'on') %}
+            {% set home_mode = states('input_select.home_state') %}
+
+            {% if override_active %} Manual Override
+            {% elif home_mode == 'Night' %} Night Mode Lock
+            {% elif use_pyscript and states('pyscript.test_bedroom_brightness') not in ['unknown', 'unavailable'] %} PyScript Engine
+            {% elif is_state('input_boolean.adaptive_learning_enabled', 'on') and state_attr('sensor.learned_brightness_bedroom', 'using_learned') %} Adaptive Learning
+            {% elif is_state('input_boolean.intelligent_lighting_enable', 'on') %} Intelligent System
+            {% else %} Fallback Values
+            {% endif %}
+          # The PyScript engine now adds the temperature attribute automatically
+
+      - name: "Bedroom ALS Status"
+        state: >-
+          {% set enabled = is_state('input_boolean.bedroom_motion_automation', 'on') %}
+          {% set motion = is_state('binary_sensor.bedroom_x_occupancy', 'on') %}
+          {% set brightness = states('sensor.bedroom_target_brightness') | int(0) %}
+          {% set source = state_attr('sensor.bedroom_target_brightness', 'calculation_source') %}
+          {% set home_mode = states('input_select.home_state') %}
+          {% set error = states('input_text.als_error_bedroom') %}
+          {% if error not in ['', 'unknown', 'unavailable'] %} 🚫 Error Present
+          {% elif not enabled %} ⏸️ System Disabled
+          {% elif home_mode == 'Away' %} 🚪 Away Mode
+          {% elif motion %} 💡 Motion Active ({{ brightness }}%)
+          {% else %} 🛏️ Ready ({{ source }})
+          {% endif %}
+        icon: >-
+          {% set status = this.state %}
+          {% if '🚫' in status %} mdi:alert-circle
+          {% elif '⏸️' in status %} mdi:pause-circle
+          {% elif '🚪' in status %} mdi:home-export-outline
+          {% elif '💡' in status %} mdi:lightbulb-on
+          {% else %} mdi:bed
+          {% endif %}
+
+automation:
+  - id: bedroom_motion_lights
+    alias: "Bedroom - Motion Lights"
+    description: "Primary automation: Turns on the closet light when motion is detected."
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.bedroom_x_occupancy
+        to: "on"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.bedroom_motion_automation
+        state: "on"
+      - condition: not
+        conditions:
+          - condition: state
+            entity_id: input_select.home_state
+            state: "Away"
+      - condition: template
+        value_template: >
+          {{ trigger.from_state is not none and
+              trigger.from_state.state not in ['unknown', 'unavailable'] }}
+    actions:
+      - action: light.turn_on
+        target:
+          entity_id: light.closet
+        data:
+          brightness_pct: "{{ states('sensor.bedroom_target_brightness') | int }}"
+          color_temp_kelvin: "{{ state_attr('sensor.bedroom_target_brightness', 'temperature') | int(3000) }}"
+
+  - id: bedroom_motion_off
+    alias: "Bedroom - Motion Off"
+    description: "Turns off closet light after motion timeout."
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.bedroom_x_occupancy
+        to: "off"
+        for:
+          seconds: "{{ states('input_number.bedroom_motion_timeout') | int(30) }}"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.bedroom_motion_automation
+        state: "on"
+      - condition: state
+        entity_id: light.closet
+        state: "on"
+      - condition: not
+        conditions:
+          - condition: state
+            entity_id: input_select.home_state
+            state: "Away"
+    actions:
+      - action: light.turn_off
+        target:
+          entity_id: light.closet
+        data:
+          transition: 2
+
+  - id: bedroom_mode_transitions
+    alias: "Bedroom - Mode Transitions"
+    description: "Handles lighting changes when home mode changes (e.g., to Away or Night)."
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: input_select.home_state
+    actions:
+      - choose:
+          # If mode changes to Away, turn off the light
+          - conditions: "{{ trigger.to_state.state == 'Away' }}"
+            sequence:
+              - action: light.turn_off
+                target:
+                  entity_id: light.closet
+          # If the light is already ON when mode changes to Night, adjust it to the correct low-light setting
+          - conditions: "{{ trigger.to_state.state == 'Night' and is_state('light.closet', 'on') }}"
+            sequence:
+              - action: light.turn_on
+                target:
+                  entity_id: light.closet
+                data:
+                  brightness_pct: "{{ states('sensor.bedroom_target_brightness') | int }}"
+                  color_temp_kelvin: "{{ state_attr('sensor.bedroom_target_brightness', 'temperature') | int(3000) }}"

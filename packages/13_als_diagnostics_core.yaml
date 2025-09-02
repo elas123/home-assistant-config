@@ -1,0 +1,52 @@
+################################################################################
+# ALS DIAGNOSTICS SYSTEM - CORE AUTOMATION v1.1
+# Author: Claude
+# Updated: 2025-09-02 12:38
+# Status: ✅ Complete Implementation - Now uses PyScript for complex logic
+# Purpose: System log monitoring with PyScript-based error processing
+################################################################################
+
+automation:
+  # Core error capture system
+  - id: als_system_error_capture
+    alias: "ALS - System Error Capture"
+    description: "Captures system log errors and classifies them by room/system"
+    mode: queued
+    max_exceeded: silent
+    triggers:
+      - trigger: event
+        event_type: system_log_event
+        event_data:
+          level: ERROR
+      - trigger: event
+        event_type: system_log_event
+        event_data:
+          level: CRITICAL
+      - trigger: event  
+        event_type: system_log_event
+        event_data:
+          level: WARNING
+    conditions:
+      - condition: state
+        entity_id: input_boolean.als_diagnostics_enabled
+        state: "on"
+    actions:
+      # Use PyScript to process the error (replaces complex YAML template logic)
+      - action: pyscript.process_als_error
+        data:
+          message: "{{ trigger.event.data.message }}"
+          level: "{{ trigger.event.data.level }}"
+          source: "{{ trigger.event.data.name | default('Unknown') }}"
+
+script:
+  # Manual error clearing - simplified to use PyScript
+  clear_room_error:
+    alias: "Clear Room Error"
+    fields:
+      room:
+        description: "Room name (bedroom, kitchen, etc.) or 'all'"
+        example: "bedroom"
+    sequence:
+      - action: pyscript.clear_room_errors
+        data:
+          room: "{{ room }}"

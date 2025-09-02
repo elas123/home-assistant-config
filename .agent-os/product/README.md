@@ -1,0 +1,11 @@
+# Project Docs Index
+- Tech Stack → `tech-stack.md`
+- Best Practices → `best-practices.md`
+- Code Style Overview → `code-style.md`
+  - YAML → `code-style/yaml-style.md`
+  - Pyscript → `code-style/pyscript-style.md`
+  - Jinja2 → `code-style/jinja2-style.md`
+- Required Entities → `required-entities.md`
+- Validation Workflow → `validation-workflow.md`
+- ALS Diagnostics → `als_diagnostics_alert_system.md`
+- Kitchen Teaching System → `ha_kitchen_lighting_teaching_system.md`

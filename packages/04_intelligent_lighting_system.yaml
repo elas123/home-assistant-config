@@ -1,0 +1,687 @@
+################################################################################
+# INTELLIGENT LIGHTING PACKAGE v3.8 - EVENING AUTOMATION RAMP PROTECTION
+# Author: Frank S Elaschat
+# Updated: 2025-09-01
+# Status: FIXED - Evening automation protected from interfering with ramps
+# Changes: Added time/state conditions to block Evening automations during ramps
+################################################################################
+
+template:
+  - sensor:
+      - name: "Intelligent Brightness Master"
+        unit_of_measurement: "%"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] and
+             states('weather.pirateweather') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% if is_state('input_boolean.sleep_in_ramp_active', 'on') %}
+            {{ states('sensor.sleep_in_ramp_brightness') | int(50) }}
+          {% else %}
+            {% set mode = states('input_select.home_state') %}
+            
+            {% if mode == 'Night' %}
+              {{ states('input_number.night_max_brightness')|int(1) }}
+
+            {% elif mode == 'Early Morning' and is_state('binary_sensor.working_today', 'on') %}
+              {% set time_decimal = now().hour + (now().minute / 60) %}
+              {% if 4.83 <= time_decimal <= 5.67 %}
+                {% set start_bright = states('input_number.gradient_start_brightness')|float(10) %}
+                {% set end_bright = states('input_number.gradient_end_brightness')|float(55) %}
+                {% set progress = (time_decimal - 4.83) / 0.84 %}
+                {{ (start_bright + ((end_bright - start_bright) * progress)) | round(0) }}
+              {% elif time_decimal < 4.83 %}
+                {{ states('input_number.gradient_start_brightness')|int(10) }}
+              {% else %}
+                {{ states('input_number.gradient_end_brightness')|int(55) }}
+              {% endif %}
+
+            {% elif mode == 'Day' %}
+              {% set cloud_coverage = state_attr('weather.pirateweather', 'cloud_coverage') | int(0) %}
+              {% set base = states('input_number.als_day_base_brightness') | float(30) %}
+              {% set max_bright = states('input_number.als_day_max_brightness') | float(80) %}
+              {% set cloud_boost_pct = states('input_number.als_cloudy_boost') | float(15) %}
+              {% set winter_boost = states('input_number.als_winter_boost') | float(10) %}
+              {% set fall_boost = states('input_number.als_fall_boost') | float(5) %}
+              
+              {% set cloud_boost = (cloud_coverage / 100) * cloud_boost_pct %}
+              {% set season = states('sensor.current_season') %}
+              {% set season_adj = winter_boost if season == 'Winter' else fall_boost if season == 'Fall' else 0 %}
+              
+              {% set final = base + cloud_boost + season_adj %}
+              {{ [final, max_bright] | min | round(0) }}
+
+            {% elif mode == 'Evening' %}
+              {% set peak_start = states('input_datetime.evening_peak_start') | default('18:00:00') %}
+              {% set ramp_start = states('input_datetime.bedtime_ramp_start') | default('20:00:00') %}
+              {% set ramp_end = states('input_datetime.bedtime_ramp_end') | default('21:30:00') %}
+              {% set current_time = now().strftime('%H:%M:%S') %}
+              {% set peak_brightness = states('input_number.evening_peak_brightness') | float(70) %}
+              {% set end_brightness = states('input_number.evening_end_brightness') | float(25) %}
+              
+              {% if current_time < peak_start %}
+                {{ (peak_brightness * 0.85) | round(0) }}
+              {% elif peak_start <= current_time <= states('input_datetime.evening_peak_end') | default('20:00:00') %}
+                {{ peak_brightness | round(0) }}
+              {% elif ramp_start <= current_time <= ramp_end %}
+                {% set ramp_start_seconds = (ramp_start.split(':')[0] | int * 3600) + (ramp_start.split(':')[1] | int * 60) %}
+                {% set ramp_end_seconds = (ramp_end.split(':')[0] | int * 3600) + (ramp_end.split(':')[1] | int * 60) %}
+                {% set current_seconds = now().hour * 3600 + now().minute * 60 + now().second %}
+                {% set progress = (current_seconds - ramp_start_seconds) / (ramp_end_seconds - ramp_start_seconds) %}
+                {{ [end_brightness, peak_brightness - ((peak_brightness - end_brightness) * progress)] | max | round(0) }}
+              {% else %}
+                {{ end_brightness | round(0) }}
+              {% endif %}
+
+            {% elif mode == 'Away' %}
+              0
+            {% else %}
+              50
+            {% endif %}
+          {% endif %}
+        icon: mdi:brightness-6
+
+      - name: "Intelligent Temperature Master"
+        unit_of_measurement: "K"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% if is_state('input_boolean.sleep_in_ramp_active', 'on') %}
+            {{ states('sensor.sleep_in_ramp_temperature') | int(3000) }}
+          {% else %}
+            {% set mode = states('input_select.home_state') %}
+            {% if mode == 'Night' %}
+              {{ states('input_number.night_temp')|int(1800) }}
+            {% elif mode == 'Early Morning' and is_state('binary_sensor.working_today', 'on') %}
+              {% set time_decimal = now().hour + (now().minute / 60) %}
+              {% if 4.83 <= time_decimal <= 5.67 %}
+                {% set start_temp = states('input_number.gradient_start_temp')|float(2000) %}
+                {% set end_temp = states('input_number.gradient_end_temp')|float(4000) %}
+                {% set progress = (time_decimal - 4.83) / 0.84 %}
+                {{ (start_temp + ((end_temp - start_temp) * progress)) | round(0) }}
+              {% elif time_decimal < 4.83 %}
+                {{ states('input_number.gradient_start_temp')|int(2000) }}
+              {% else %}
+                {{ states('input_number.gradient_end_temp')|int(4000) }}
+              {% endif %}
+            {% elif mode == 'Day' %}
+              {% set season = states('sensor.current_season') %}
+              {% if season == 'Winter' %} 3800
+              {% elif season == 'Summer' %} 4200
+              {% else %} 4000
+              {% endif %}
+            {% elif mode == 'Evening' %}
+              {% set ramp_start = states('input_datetime.bedtime_ramp_start') | default('20:00:00') %}
+              {% set ramp_end = states('input_datetime.bedtime_ramp_end') | default('21:30:00') %}
+              {% set current_time = now().strftime('%H:%M:%S') %}
+              {% set start_temp = states('input_number.evening_temp_start') | float(4000) %}
+              {% set end_temp = states('input_number.evening_temp_end') | float(2200) %}
+              {% if current_time < ramp_start %}
+                {{ start_temp | round(0) }}
+              {% elif ramp_start <= current_time <= ramp_end %}
+                {% set ramp_start_seconds = (ramp_start.split(':')[0] | int * 3600) + (ramp_start.split(':')[1] | int * 60) %}
+                {% set ramp_end_seconds = (ramp_end.split(':')[0] | int * 3600) + (ramp_end.split(':')[1] | int * 60) %}
+                {% set current_seconds = now().hour * 3600 + now().minute * 60 + now().second %}
+                {% set progress = (current_seconds - ramp_start_seconds) / (ramp_end_seconds - ramp_start_seconds) %}
+                {{ [end_temp, start_temp - ((start_temp - end_temp) * progress)] | max | round(0) }}
+              {% else %}
+                {{ end_temp | round(0) }}
+              {% endif %}
+            {% else %} 3000
+            {% endif %}
+          {% endif %}
+        icon: mdi:thermometer
+
+      - name: "Intelligent Brightness Bedroom"
+        unit_of_measurement: "%"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% set use_custom = is_state('input_boolean.bedroom_use_custom_settings', 'on') %}
+          {% set mode = states('input_select.home_state') %}
+          
+          {% if use_custom and mode in ['Day', 'Early Morning'] %}
+            {{ states('input_number.bedroom_custom_day_brightness') | int(60) }}
+          {% elif use_custom and mode == 'Evening' %}
+            {{ states('input_number.bedroom_custom_evening_brightness') | int(40) }}
+          {% else %}
+            {% if is_state('input_boolean.sleep_in_ramp_active', 'on') %}
+              {{ states('sensor.sleep_in_ramp_brightness') | int(50) }}
+            {% else %}
+              {% set cloud_coverage = state_attr('weather.pirateweather', 'cloud_coverage') | int(0) %}
+              {% if mode == 'Night' %} 1
+              {% elif mode == 'Day' %}
+                {{ 50 if cloud_coverage > 50 else 30 }}
+              {% elif mode == 'Evening' %} 40
+              {% else %}
+                {{ states('sensor.intelligent_brightness_master') | int(50) }}
+              {% endif %}
+            {% endif %}
+          {% endif %}
+        icon: mdi:brightness-6
+
+      - name: "Intelligent Temperature Bedroom"
+        unit_of_measurement: "K"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% set use_custom = is_state('input_boolean.bedroom_use_custom_settings', 'on') %}
+          {% set mode = states('input_select.home_state') %}
+
+          {% if use_custom and mode in ['Day', 'Early Morning'] %}
+            {{ states('input_number.bedroom_custom_day_temp') | int(4500) }}
+          {% elif use_custom and mode == 'Evening' %}
+            {{ states('input_number.bedroom_custom_evening_temp') | int(2700) }}
+          {% else %}
+            {{ states('sensor.intelligent_temperature_master') | int(3000) }}
+          {% endif %}
+        icon: mdi:thermometer
+        
+      - name: "Bedroom Intelligent Brightness"
+        unique_id: bedroom_intelligent_brightness_system
+        unit_of_measurement: "%"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% set home_mode = states('input_select.home_state') %}
+          
+          {% if home_mode == 'Night' %}
+            {{ states('input_number.night_max_brightness') | int(1) }}
+          {% elif is_state('input_boolean.adaptive_learning_enabled', 'on') and state_attr('sensor.learned_brightness_bedroom', 'using_learned') %}
+            {{ states('sensor.learned_brightness_bedroom') | int(40) }}
+          {% elif is_state('input_boolean.intelligent_lighting_enable', 'on') %}
+            {{ states('sensor.intelligent_brightness_bedroom') | int(40) }}
+          {% else %}
+            {% if home_mode in ['Evening', 'Early Morning'] %}
+              40
+            {% elif home_mode == 'Day' %}
+              50
+            {% else %}
+              40
+            {% endif %}
+          {% endif %}
+        attributes:
+          calculation_source: >
+            {% set home_mode = states('input_select.home_state') %}
+            {% if home_mode == 'Night' %} Night Mode Lock
+            {% elif is_state('input_boolean.adaptive_learning_enabled', 'on') and state_attr('sensor.learned_brightness_bedroom', 'using_learned') %} Adaptive Learning
+            {% elif is_state('input_boolean.intelligent_lighting_enable', 'on') %} Intelligent System
+            {% else %} Fallback Values
+            {% endif %}
+
+      - name: "Intelligent Brightness Living Room"
+        unit_of_measurement: "%"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% set use_custom = is_state('input_boolean.living_room_use_custom_settings', 'on') %}
+          {% set mode = states('input_select.home_state') %}
+          
+          {% if use_custom and mode in ['Day', 'Early Morning'] %}
+            {{ states('input_number.living_room_custom_day_brightness') | int(50) }}
+          {% elif use_custom and mode == 'Evening' %}
+            {{ states('input_number.living_room_custom_evening_brightness') | int(35) }}
+          {% else %}
+            {% if is_state('input_boolean.sleep_in_ramp_active', 'on') %}
+              {{ states('sensor.sleep_in_ramp_brightness') | int(50) }}
+            {% else %}
+              {% set cloud_coverage = state_attr('weather.pirateweather', 'cloud_coverage') | int(0) %}
+              {% if mode == 'Night' %} 0
+              {% elif mode == 'Day' %}
+                {{ 45 if cloud_coverage > 50 else 0 }}
+              {% elif mode == 'Evening' %} 40
+              {% else %}
+                {{ states('sensor.intelligent_brightness_master') | int(50) }}
+              {% endif %}
+            {% endif %}
+          {% endif %}
+        icon: mdi:brightness-6
+
+      - name: "Intelligent Temperature Living Room"
+        unit_of_measurement: "K"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% set use_custom = is_state('input_boolean.living_room_use_custom_settings', 'on') %}
+          {% set mode = states('input_select.home_state') %}
+
+          {% if use_custom and mode in ['Day', 'Early Morning'] %}
+            {{ states('input_number.living_room_custom_day_temp') | int(5000) }}
+          {% elif use_custom and mode == 'Evening' %}
+            {{ states('input_number.living_room_custom_evening_temp') | int(2500) }}
+          {% else %}
+            {{ states('sensor.intelligent_temperature_master') | int(3000) }}
+          {% endif %}
+        icon: mdi:thermometer
+      
+      - name: "Intelligent Brightness Kitchen"
+        unit_of_measurement: "%"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% if is_state('input_boolean.sleep_in_ramp_active', 'on') %}
+            {{ states('sensor.sleep_in_ramp_brightness') | int(50) }}
+          {% else %}
+            {% set mode = states('input_select.home_state') %}
+            {% if mode == 'Night' %} 0
+            {% else %}
+              {{ states('sensor.intelligent_brightness_master') | int(50) }}
+            {% endif %}
+          {% endif %}
+        icon: mdi:brightness-6
+
+      - name: "Intelligent Brightness Bathroom"
+        unit_of_measurement: "%"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% if is_state('input_boolean.sleep_in_ramp_active', 'on') %}
+            {{ states('sensor.sleep_in_ramp_brightness') | int(50) }}
+          {% else %}
+            {% set mode = states('input_select.home_state') %}
+            {% set cloud_coverage = state_attr('weather.pirateweather', 'cloud_coverage') | int(0) %}
+            {% if mode == 'Night' %} 1
+            {% elif mode == 'Day' %}
+              {{ 70 if cloud_coverage > 50 else 30 }}
+            {% elif mode == 'Evening' %} 50
+            {% else %}
+              {{ states('sensor.intelligent_brightness_master') | int(50) }}
+            {% endif %}
+          {% endif %}
+        icon: mdi:brightness-6
+
+      - name: "Intelligent Brightness Hallway"
+        unit_of_measurement: "%"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% if is_state('input_boolean.sleep_in_ramp_active', 'on') %}
+            {{ states('sensor.sleep_in_ramp_brightness') | int(50) }}
+          {% else %}
+            {% set mode = states('input_select.home_state') %}
+            {% set cloud_coverage = state_attr('weather.pirateweather', 'cloud_coverage') | int(0) %}
+            {% if mode == 'Night' %} 1
+            {% elif mode == 'Day' %}
+              {{ 20 if cloud_coverage > 50 else 10 }}
+            {% elif mode == 'Evening' %} 15
+            {% else %}
+              {{ states('sensor.intelligent_brightness_master') | int(50) }}
+            {% endif %}
+          {% endif %}
+        icon: mdi:brightness-6
+
+      # FIXED: Added missing closing bracket in availability template
+      - name: "Intelligent Brightness Laundry"
+        unit_of_measurement: "%"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% if is_state('input_boolean.sleep_in_ramp_active', 'on') %}
+            {{ states('sensor.sleep_in_ramp_brightness') | int(50) }}
+          {% else %}
+            {% set mode = states('input_select.home_state') %}
+            {% set cloud_coverage = state_attr('weather.pirateweather', 'cloud_coverage') | int(0) %}
+            {% if mode == 'Night' %} 1
+            {% elif mode == 'Day' %}
+              {{ 80 if cloud_coverage > 50 else 0 }}
+            {% elif mode == 'Evening' %} 60
+            {% else %}
+              {{ states('sensor.intelligent_brightness_master') | int(50) }}
+            {% endif %}
+          {% endif %}
+        icon: mdi:brightness-6
+
+      - name: "Intelligent Lighting Diagnostic"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% set enabled = is_state('input_boolean.intelligent_lighting_enable', 'on') %}
+          {% set mode = states('input_select.home_state') %}
+          {% set brightness = states('sensor.intelligent_brightness_master') | int(0) %}
+          {% if not enabled %} System Disabled
+          {% elif mode == 'Night' %} Night - {{ brightness }}%
+          {% elif mode == 'Evening' %} Evening - {{ brightness }}%
+          {% elif mode == 'Day' %} Day - {{ brightness }}%
+          {% elif mode == 'Early Morning' %} Early Morning - {{ brightness }}%
+          {% elif mode == 'Away' %} Away - {{ brightness }}%
+          {% else %} {{ mode }} - {{ brightness }}%
+          {% endif %}
+        icon: >-
+          {% if not is_state('input_boolean.intelligent_lighting_enable', 'on') %} mdi:lightbulb-off
+          {% else %}
+            {% set temp = states('sensor.intelligent_temperature_master') | float(3000) %}
+            {% if temp < 2500 %} mdi:weather-night
+            {% elif temp < 3500 %} mdi:weather-sunset
+            {% else %} mdi:weather-sunny
+            {% endif %}
+          {% endif %}
+        attributes:
+          bedroom_brightness: "{{ states('sensor.intelligent_brightness_bedroom') | int(0) }}%"
+          kitchen_brightness: "{{ states('sensor.intelligent_brightness_kitchen') | int(0) }}%"
+          bathroom_brightness: "{{ states('sensor.intelligent_brightness_bathroom') | int(0) }}%"
+          hallway_brightness: "{{ states('sensor.intelligent_brightness_hallway') | int(0) }}%"
+          laundry_brightness: "{{ states('sensor.intelligent_brightness_laundry') | int(0) }}%"
+          temperature: "{{ states('sensor.intelligent_temperature_master') | int(3000) }}K"
+          home_state: "{{ states('input_select.home_state') }}"
+          system_enabled: "{{ is_state('input_boolean.intelligent_lighting_enable', 'on') }}"
+
+      # COMPLETELY FIXED: Evening Temperature Ramp with proper timezone handling
+      - name: "Evening Temperature Ramp"
+        unit_of_measurement: "K"
+        availability: "{{ is_state('input_boolean.enable_evening_temperature_ramp', 'on') }}"
+        state: >-
+          {% set evening_mode = states('input_select.home_state') == 'Evening' %}
+          {% set ramp_started = states('input_datetime.evening_ramp_started') %}
+          {% set target_time_str = states('input_datetime.evening_target_time') %}
+          {% set current_time = now() %}
+          {% set target_temp = states('input_number.evening_target_temp') | float(2000) %}
+          
+          {% if not evening_mode %}
+            {{ states('sensor.intelligent_temperature_master') | int(4000) }}
+            
+          {% elif ramp_started in ['', 'unknown', 'unavailable'] %}
+            {{ states('sensor.intelligent_temperature_master') | int(4000) }}
+            
+          {% else %}
+            {% set start_temp = states('input_number.evening_ramp_start_temp') | float(4000) %}
+            
+            {# Parse the datetime string manually and make it timezone-aware #}
+            {% set ramp_parts = ramp_started.split(' ') %}
+            {% if ramp_parts | length >= 2 %}
+              {% set date_parts = ramp_parts[0].split('-') %}
+              {% set time_parts = ramp_parts[1].split(':') %}
+              {% set start_time = now().replace(year=date_parts[0]|int, month=date_parts[1]|int, day=date_parts[2]|int, hour=time_parts[0]|int, minute=time_parts[1]|int, second=time_parts[2]|int) %}
+            {% else %}
+              {% set start_time = current_time %}
+            {% endif %}
+            
+            {# Create target time as timezone-aware #}
+            {% if target_time_str not in ['', 'unknown', 'unavailable'] %}
+              {% set target_time = today_at(target_time_str) %}
+            {% else %}
+              {% set target_time = today_at('21:00:00') %}
+            {% endif %}
+            
+            {% if current_time <= target_time %}
+              {% set total_duration = (target_time - start_time).total_seconds() %}
+              {% set elapsed = (current_time - start_time).total_seconds() %}
+              
+              {% if total_duration <= 60 %}
+                {{ target_temp | int }}
+              {% else %}
+                {% set progress = elapsed / total_duration %}
+                {% set progress = ([0, progress, 1] | sort)[1] %}
+                {% set current_temp = start_temp - ((start_temp - target_temp) * progress) %}
+                {{ current_temp | round(0) }}
+              {% endif %}
+              
+            {% else %}
+              {% set catchup_minutes = states('input_number.evening_catchup_minutes') | int(15) %}
+              {% set catchup_duration = catchup_minutes * 60 %}
+              {% set elapsed_past_target = (current_time - target_time).total_seconds() %}
+              
+              {% if elapsed_past_target >= catchup_duration %}
+                {{ target_temp | int }}
+              {% else %}
+                {% set catchup_progress = elapsed_past_target / catchup_duration %}
+                {% set current_temp = start_temp - ((start_temp - target_temp) * catchup_progress) %}
+                {{ current_temp | round(0) }}
+              {% endif %}
+            {% endif %}
+          {% endif %}
+        attributes:
+          ramp_active: >-
+            {{ states('input_select.home_state') == 'Evening' and 
+                states('input_datetime.evening_ramp_started') not in ['', 'unknown', 'unavailable'] }}
+          start_time: "{{ states('input_datetime.evening_ramp_started') }}"
+          target_time: "{{ states('input_datetime.evening_target_time') }}"
+          start_temp: "{{ states('input_number.evening_ramp_start_temp') | int(4000) }}K"
+          target_temp: "{{ states('input_number.evening_target_temp') | int(2000) }}K"
+          ramp_status: >-
+            {% set evening_mode = states('input_select.home_state') == 'Evening' %}
+            {% set ramp_started = states('input_datetime.evening_ramp_started') %}
+            {% if not evening_mode %} Waiting for Evening
+            {% elif ramp_started in ['', 'unknown', 'unavailable'] %} Ready to Start
+            {% elif now() <= today_at(states('input_datetime.evening_target_time')) %} Normal Ramp
+            {% else %} Catchup Ramp
+            {% endif %}
+        icon: >-
+          {% set temp = this.state | int(4000) %}
+          {% if temp <= 2200 %} mdi:weather-night
+          {% elif temp <= 3000 %} mdi:weather-sunset
+          {% elif temp <= 4000 %} mdi:weather-sunset-up
+          {% else %} mdi:weather-sunny
+          {% endif %}
+
+      - name: "Bathroom Intelligent Brightness"
+        unique_id: bathroom_intelligent_brightness_system
+        unit_of_measurement: "%"
+        availability: >-
+          {{ states('input_select.home_state') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% set home_mode = states('input_select.home_state') %}
+          {% set hold_mode = is_state('input_boolean.bathroom_100_percent_hold', 'on') %}
+          {% set override_active = is_state('input_boolean.bathroom_adaptive_override', 'on') %}
+
+          {% if hold_mode %} 100
+          {% elif override_active %}
+            {{ states('input_number.bathroom_override_brightness') | int(100) }}
+          {% elif home_mode == 'Night' %}
+            {{ states('input_number.bathroom_night_max_brightness') | int(1) }}
+          {% elif is_state('input_boolean.adaptive_learning_enabled', 'on') and state_attr('sensor.learned_brightness_bathroom', 'using_learned') %}
+            {{ states('sensor.learned_brightness_bathroom') | int(50) }}
+          {% elif is_state('input_boolean.intelligent_lighting_enable', 'on') %}
+            {{ states('sensor.intelligent_brightness_bathroom') | int(50) }}
+          {% else %}
+            {% if home_mode in ['Evening', 'Early Morning'] %}
+              {{ states('input_number.bathroom_fallback_evening_brightness') | int(50) }}
+            {% elif home_mode == 'Day' %}
+              {{ states('input_number.bathroom_fallback_day_brightness') | int(70) }}
+            {% else %} 50
+            {% endif %}
+          {% endif %}
+        attributes:
+          calculation_source: >
+            {% set hold_mode = is_state('input_boolean.bathroom_100_percent_hold', 'on') %}
+            {% set override_active = is_state('input_boolean.bathroom_adaptive_override', 'on') %}
+            {% set home_mode = states('input_select.home_state') %}
+            {% if hold_mode %} Door Closed Hold
+            {% elif override_active %} Manual Override
+            {% elif home_mode == 'Night' %} Night Mode Lock
+            {% elif is_state('input_boolean.adaptive_learning_enabled', 'on') and state_attr('sensor.learned_brightness_bathroom', 'using_learned') %} Adaptive Learning
+            {% elif is_state('input_boolean.intelligent_lighting_enable', 'on') %} Intelligent System
+            {% else %} Fallback Values
+            {% endif %}
+
+automation:
+  - id: evening_temperature_ramp_start
+    alias: "ALS - Evening Temperature Ramp Start"
+    description: "Starts the evening temperature ramp when Evening mode begins"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_select.home_state
+        to: "Evening"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.enable_evening_temperature_ramp
+        state: "on"
+      - condition: state
+        entity_id: input_select.home_state
+        state: "Evening"
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.evening_ramp_started
+        data:
+          datetime: "{{ now() }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.evening_ramp_start_temp
+        data:
+          value: "{{ states('sensor.intelligent_temperature_master') | int(4000) }}"
+
+  - id: evening_temperature_ramp_apply_existing
+    alias: "ALS - Apply Ramp to Already-On Lights"
+    description: "Updates lights that are already on when Evening mode starts"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_select.home_state
+        to: "Evening"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.enable_evening_temperature_ramp
+        state: "on"
+    actions:
+      - delay:
+          seconds: 2
+      - if:
+          - condition: or
+            conditions:
+              - condition: state
+                entity_id: light.lamp_1
+                state: "on"
+              - condition: state
+                entity_id: light.lamp_2
+                state: "on"
+        then:
+          - action: light.turn_on
+            target:
+              entity_id:
+                - light.lamp_1
+                - light.lamp_2
+            data:
+              color_temp_kelvin: "{{ states('sensor.evening_temperature_ramp') | int(4000) }}"
+              transition: 10
+      - if:
+          - condition: state
+            entity_id: light.closet
+            state: "on"
+        then:
+          - action: light.turn_on
+            target:
+              entity_id: light.closet
+            data:
+              color_temp_kelvin: "{{ states('sensor.evening_temperature_ramp') | int(4000) }}"
+              transition: 10
+
+  - id: evening_temperature_ramp_cleanup
+    alias: "ALS - Evening Temperature Ramp Cleanup"
+    description: "Cleans up ramp data when Evening ends or at midnight reset"
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: input_select.home_state
+        from: "Evening"
+        id: "mode_change"
+      - trigger: time
+        at: "00:00:00"
+        id: "midnight_reset"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.enable_evening_temperature_ramp
+        state: "on"
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.evening_ramp_started
+        data:
+          datetime: ""
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.evening_ramp_start_temp
+        data:
+          value: 4000
+
+  - id: evening_smooth_temperature_ramp_start
+    alias: "Evening - Start Smooth Temperature Ramp"
+    description: "Starts smooth temperature ramping for all evening lights"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_select.home_state
+        to: "Evening"
+      - trigger: state
+        entity_id: sensor.evening_temperature_ramp
+        id: "sensor_change"
+    conditions:
+      - condition: state
+        entity_id: input_select.home_state
+        state: "Evening"
+      - condition: state
+        entity_id: input_boolean.enable_evening_temperature_ramp
+        state: "on"
+      - condition: or
+        conditions:
+          - condition: state
+            entity_id: light.lamp_1
+            state: "on"
+          - condition: state
+            entity_id: light.lamp_2
+            state: "on"
+          - condition: state
+            entity_id: light.closet
+            state: "on"
+    actions:
+      - action: script.turn_on
+        target:
+          entity_id: script.evening_smooth_temperature_ramp
+
+  - id: evening_smooth_temperature_ramp_stop
+    alias: "Evening - Stop Smooth Temperature Ramp"
+    description: "Stops smooth temperature ramping when Evening ends"
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: input_select.home_state
+        from: "Evening"
+    actions:
+      - action: script.turn_off
+        target:
+          entity_id: script.evening_smooth_temperature_ramp
+      - action: logbook.log
+        data:
+          name: "Evening Automation" 
+          message: "✅ Evening smooth temperature ramp stopped - home state changed from Evening"
+
+script:
+  evening_smooth_temperature_ramp:
+    alias: "Evening Smooth Temperature Ramp - All Lights"
+    description: "Single smooth transition from start temp to 2000K by 9 PM for all evening lights"
+    mode: restart
+    sequence:
+      - variables:
+          start_temp: "{{ states('input_number.evening_ramp_start_temp') | int(4000) }}"
+          target_temp: "{{ states('input_number.evening_target_temp') | int(2000) }}"
+          target_time: "{{ today_at(states('input_datetime.evening_target_time') if states('input_datetime.evening_target_time') not in ['', 'unknown', 'unavailable'] else '21:00:00') }}"
+          total_transition_seconds: "{{ (today_at(states('input_datetime.evening_target_time') if states('input_datetime.evening_target_time') not in ['', 'unknown', 'unavailable'] else '21:00:00') - now()).total_seconds() | int }}"
+      - condition: template
+        value_template: "{{ (today_at(states('input_datetime.evening_target_time') if states('input_datetime.evening_target_time') not in ['', 'unknown', 'unavailable'] else '21:00:00') - now()).total_seconds() | int > 0 }}"
+      - parallel:
+          - sequence:
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity_id: light.lamp_1
+                    state: "on"
+                  - condition: state
+                    entity_id: light.lamp_2
+                    state: "on"
+              - action: light.turn_on
+                target: 
+                  entity_id:
+                    - light.lamp_1
+                    - light.lamp_2
+                data:
+                  color_temp_kelvin: "{{ target_temp }}"
+                  transition: "{{ total_transition_seconds }}"
+          - sequence:
+              - condition: state
+                entity_id: light.closet
+                state: "on"
+              - action: light.turn_on
+                target:
+                  entity_id: light.closet
+                data:
+                  color_temp_kelvin: "{{ target_temp }}"
+                  transition: "{{ total_transition_seconds }}"

@@ -1,0 +1,151 @@
+################################################################################
+# ALS DIAGNOSTICS SYSTEM - INPUT HELPERS v1.0
+# Author: Claude
+# Updated: 2025-09-02 12:34
+# Status: ✅ Complete Implementation
+# Purpose: Input helpers for ALS diagnostics error storage and configuration
+################################################################################
+
+# Global Error Storage
+input_text:
+  # Global system error tracking
+  latest_system_error:
+    name: "Latest System Error"
+    initial: ""
+    icon: mdi:alert-circle-outline
+    max: 255
+
+  system_error_feed:
+    name: "System Error Feed" 
+    initial: "[]"
+    icon: mdi:format-list-bulleted
+    max: 8000
+
+  # Health status storage
+  als_global_health_status:
+    name: "ALS Global Health Status"
+    initial: "healthy"
+    icon: mdi:heart-pulse
+    max: 50
+
+  # Room-specific error storage
+  als_error_bedroom:
+    name: "Bedroom Error Status"
+    initial: ""
+    icon: mdi:bed-empty
+    max: 255
+    
+  als_error_kitchen:
+    name: "Kitchen Error Status" 
+    initial: ""
+    icon: mdi:chef-hat
+    max: 255
+    
+  als_error_livingroom:
+    name: "Living Room Error Status"
+    initial: ""
+    icon: mdi:sofa
+    max: 255
+    
+  als_error_bathroom:
+    name: "Bathroom Error Status"
+    initial: ""
+    icon: mdi:shower
+    max: 255
+    
+  als_error_hallway:
+    name: "Hallway Error Status"
+    initial: ""
+    icon: mdi:door-open
+    max: 255
+    
+  als_error_laundry:
+    name: "Laundry Error Status"
+    initial: ""
+    icon: mdi:washing-machine
+    max: 255
+
+  # Room-specific error feeds (last 5 errors per room)
+  als_error_feed_bedroom:
+    name: "Bedroom Error Feed"
+    initial: "[]"
+    icon: mdi:bed-empty
+    max: 2000
+    
+  als_error_feed_kitchen:
+    name: "Kitchen Error Feed"
+    initial: "[]"
+    icon: mdi:chef-hat
+    max: 2000
+    
+  als_error_feed_livingroom:
+    name: "Living Room Error Feed"
+    initial: "[]"
+    icon: mdi:sofa
+    max: 2000
+    
+  als_error_feed_bathroom:
+    name: "Bathroom Error Feed"
+    initial: "[]"
+    icon: mdi:shower
+    max: 2000
+    
+  als_error_feed_hallway:
+    name: "Hallway Error Feed"
+    initial: "[]"
+    icon: mdi:door-open
+    max: 2000
+    
+  als_error_feed_laundry:
+    name: "Laundry Error Feed"
+    initial: "[]"
+    icon: mdi:washing-machine
+    max: 2000
+
+# Diagnostic Control Parameters
+input_number:
+  error_retention_days:
+    name: "Error Retention Period"
+    min: 1
+    max: 30
+    step: 1
+    initial: 7
+    unit_of_measurement: "days"
+    icon: mdi:calendar-clock
+
+  health_check_interval:
+    name: "Health Check Interval"
+    min: 1
+    max: 60
+    step: 5
+    initial: 15
+    unit_of_measurement: "minutes"
+    icon: mdi:timer
+
+# System Controls
+input_boolean:
+  als_diagnostics_enabled:
+    name: "ALS Diagnostics System"
+    initial: true
+    icon: mdi:medical-bag
+
+  als_notifications_enabled:
+    name: "ALS Error Notifications"
+    initial: true
+    icon: mdi:bell-ring
+
+  als_verbose_logging:
+    name: "ALS Verbose Logging"
+    initial: false
+    icon: mdi:text-box-outline
+
+  # Test helpers
+  run_timing_tests:
+    name: "Run Timing Tests"
+    initial: false
+    icon: mdi:test-tube
+
+  run_diagnostics_tests:
+    name: "Run Diagnostics Tests"
+    initial: false
+    icon: mdi:medical-bag
