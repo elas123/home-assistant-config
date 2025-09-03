@@ -101,8 +101,8 @@ export const ROOMS = [
 
 // Home Assistant base URL - update this to your actual HA instance
 export const HA_CONFIG = {
-  baseUrl: 'http://homeassistant.local:8123', // Change to your HA URL
-  longLivedToken: '', // Add your long-lived access token here
+  baseUrl: 'http://192.168.10.153:8123',
+  longLivedToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIxZjE1MGVlMjc0ODc0YTVhOWQ2MzBmZjZhMTA3NDA3ZCIsImlhdCI6MTc1NjkzODk2MSwiZXhwIjoyMDcyMjk4OTYxfQ.O5UTmlzju3JaMhbK-Y2VlKoOlgWq4vSwhoj7QYnraNE',
 };
 
 // Brightness presets
