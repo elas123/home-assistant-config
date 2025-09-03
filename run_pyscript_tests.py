@@ -59,7 +59,6 @@ def load_and_run_pyscript_tests():
         'log': log,
         'state': state,
         'task': task,
-        'service_obj': service_obj,  # Rename to avoid conflict with decorator
         '__builtins__': __builtins__
     }
     
