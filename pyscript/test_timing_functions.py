@@ -103,12 +103,15 @@ def encode_confidence_to_temp(confidence_pct):
 
 def classify_day_type(date_str, is_workday):
     """Classify day type based on date and workday sensor."""
-    # Simplified logic - real implementation would check holidays
-    if not is_workday:
-        # Could add holiday detection logic here
+    # Check for common holidays first
+    month_day = date_str[5:]  # Get MM-DD part
+    if month_day in ["01-01", "12-25", "07-04", "11-11"]:  # New Year, Christmas, July 4th, Veterans Day
+        return "holiday"
+    elif month_day.startswith("12-2") and month_day >= "12-24":  # Christmas Eve, Christmas, Boxing Day period
+        return "holiday"
+    elif not is_workday:
         return "weekend"
     return "work"
-
 def generate_condition_key(day_type, season, week):
     """Generate condition key for timing data storage.""" 
     return f"{day_type}_{season}_{week}"

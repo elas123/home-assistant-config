@@ -1,0 +1,79 @@
+"""
+Mock PyScript environment for testing PyScript files outside Home Assistant.
+This provides the necessary decorators and objects used in PyScript.
+"""
+import logging
+from unittest.mock import Mock
+from datetime import datetime
+import sys
+import os
+
+# Mock logger
+class MockLogger:
+    def __init__(self):
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger('pyscript')
+    
+    def info(self, msg):
+        self.logger.info(msg)
+    
+    def error(self, msg):
+        self.logger.error(msg)
+    
+    def warning(self, msg):
+        self.logger.warning(msg)
+
+# Mock state object
+class MockState:
+    def __init__(self):
+        self._states = {
+            'input_boolean.pyscript_auto_validation': 'off',
+            'input_boolean.run_diagnostics_tests': 'off',
+            'input_boolean.run_timing_tests': 'off',
+        }
+    
+    def get(self, entity_id, default=None):
+        return self._states.get(entity_id, default)
+    
+    def set(self, entity_id, value):
+        self._states[entity_id] = value
+
+# Mock service object with proper call method
+class MockService:
+    def call(self, domain, service_name, **kwargs):
+        print(f"Service call: {domain}.{service_name} with {kwargs}")
+        return True
+
+# Mock task object
+class MockTask:
+    def sleep(self, seconds):
+        import time
+        time.sleep(seconds)
+
+# Create mock objects
+log = MockLogger()
+state = MockState()
+service_obj = MockService()
+task = MockTask()
+
+# Mock decorators
+def service_decorator(service_name=None):
+    def decorator(func):
+        func._pyscript_service = service_name
+        return func
+    return decorator
+
+def state_trigger(*args, **kwargs):
+    def decorator(func):
+        func._pyscript_state_trigger = args
+        return func
+    return decorator
+
+def time_trigger(trigger_spec):
+    def decorator(func):
+        func._pyscript_time_trigger = trigger_spec
+        return func
+    return decorator
+
+# Make decorators and objects available globally
+service = service_decorator

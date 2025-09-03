@@ -1,0 +1,341 @@
+################################################################################
+# SMART NOTIFICATION FRAMEWORK - ALS HEALTH ALERTS v1.0
+# Author: Claude
+# Updated: 2025-09-02
+# Status: ✅ Complete Implementation
+# Purpose: Context-aware health status notifications with cooldown management
+################################################################################
+
+# Notification cooldown storage
+input_text:
+  # Last notification timestamps by severity level
+  last_critical_notification:
+    name: "Last Critical Notification Timestamp"
+    initial: "1970-01-01T00:00:00"
+    max: 50
+    icon: mdi:clock-alert
+
+  last_warning_notification:
+    name: "Last Warning Notification Timestamp"
+    initial: "1970-01-01T00:00:00"
+    max: 50
+    icon: mdi:clock-alert-outline
+
+  last_recovery_notification:
+    name: "Last Recovery Notification Timestamp"
+    initial: "1970-01-01T00:00:00"
+    max: 50
+    icon: mdi:clock-check-outline
+
+  # Previous health status for change detection
+  previous_global_health:
+    name: "Previous Global Health Status"
+    initial: "🟩"
+    max: 10
+    icon: mdi:history
+
+  # Notification suppression flags
+  notification_suppression_active:
+    name: "Notification Suppression Status"
+    initial: "false"
+    max: 20
+    icon: mdi:bell-off
+
+# Quiet hours configuration
+input_datetime:
+  quiet_hours_start:
+    name: "Quiet Hours Start"
+    has_time: true
+    initial: "22:00:00"
+    icon: mdi:sleep
+
+  quiet_hours_end:
+    name: "Quiet Hours End"
+    has_time: true
+    initial: "07:00:00"
+    icon: mdi:weather-sunset-up
+
+# Notification control settings
+input_boolean:
+  smart_notifications_enabled:
+    name: "Smart Health Notifications"
+    initial: true
+    icon: mdi:bell-alert
+
+  quiet_hours_enabled:
+    name: "Enable Quiet Hours"
+    initial: true
+    icon: mdi:sleep
+
+  critical_override_quiet_hours:
+    name: "Critical Alerts Override Quiet Hours"
+    initial: true
+    icon: mdi:alert-circle
+
+  notification_debug_mode:
+    name: "Notification Debug Mode"
+    initial: false
+    icon: mdi:bug
+
+# Cooldown periods (in minutes)
+input_number:
+  critical_notification_cooldown:
+    name: "Critical Alert Cooldown"
+    min: 1
+    max: 60
+    step: 1
+    initial: 5
+    unit_of_measurement: "min"
+    icon: mdi:timer-alert
+
+  warning_notification_cooldown:
+    name: "Warning Alert Cooldown"
+    min: 5
+    max: 480
+    step: 5
+    initial: 60
+    unit_of_measurement: "min"
+    icon: mdi:timer
+
+  recovery_notification_cooldown:
+    name: "Recovery Alert Cooldown"
+    min: 30
+    max: 1440
+    step: 30
+    initial: 240
+    unit_of_measurement: "min"
+    icon: mdi:timer-check
+
+# Health status sensors with deep link attributes
+template:
+  - sensor:
+      # Enhanced Global Health Status for notifications
+      - name: "Global Health Notification Status"
+        unique_id: global_health_notification_v1
+        availability: >-
+          {{ states('sensor.global_health_status') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {{ states('sensor.global_health_status') | default('🟩') }}
+        attributes:
+          # Carry forward all global health attributes
+          status_text: >-
+            {{ state_attr('sensor.global_health_status', 'status_text') | default('healthy') }}
+          affected_rooms: >-
+            {{ state_attr('sensor.global_health_status', 'affected_rooms') | default([]) | list }}
+          total_error_count: >-
+            {{ state_attr('sensor.global_health_status', 'total_error_count') | default(0) }}
+          summary: >-
+            {{ state_attr('sensor.global_health_status', 'summary') | default('All systems operational') }}
+          # Deep link URLs
+          dashboard_url: "/lovelace/health-overview"
+          diagnostic_url: "/lovelace/als-diagnostics"
+          # Context-aware messaging
+          notification_message: >-
+            {% set status = states('sensor.global_health_status') | default('🟩') %}
+            {% set summary = state_attr('sensor.global_health_status', 'summary') | default('All systems operational') %}
+            {% set affected = state_attr('sensor.global_health_status', 'affected_rooms') | default([]) | list %}
+            {% if status == '🟥' %}
+              🔴 Critical Health Alert: {{ summary }}. 
+              {% if affected | length > 0 %}Affected areas: {{ affected | join(', ') }}.{% endif %}
+              Immediate attention required.
+            {% elif status == '🟨' %}
+              🟨 Health Warning: {{ summary }}.
+              {% if affected | length > 0 %}Check {{ affected | join(' and ') }} for issues.{% endif %}
+            {% else %}
+              🟢 System Recovery: {{ summary }}. All monitored areas are now healthy.
+            {% endif %}
+          notification_title: >-
+            {% set status = states('sensor.global_health_status') | default('🟩') %}
+            {% if status == '🟥' %}🚨 ALS Health Alert - Critical
+            {% elif status == '🟨' %}⚠️ ALS Health Alert - Warning
+            {% else %}✅ ALS Health Alert - Recovered
+            {% endif %}
+
+# !!! SMART NOTIFICATION AUTOMATION !!!
+
+automation:
+  # Main health status change notification handler
+  - id: smart_health_status_notifications
+    alias: "Smart Health Status Notifications"
+    description: "Context-aware notifications for health status changes with cooldown management"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      # Watch for health status changes
+      - trigger: state
+        entity_id: sensor.global_health_status
+        for:
+          seconds: 30  # 30-second delay to avoid rapid-fire notifications
+    conditions:
+      # System must be enabled
+      - condition: state
+        entity_id: input_boolean.smart_notifications_enabled
+        state: "on"
+      # Must be an actual status change
+      - condition: template
+        value_template: >-
+          {{ trigger.from_state.state != trigger.to_state.state }}
+      # Skip if from unknown/unavailable (startup conditions)
+      - condition: template
+        value_template: >-
+          {{ trigger.from_state.state not in ['unknown', 'unavailable'] }}
+    actions:
+      # Use PyScript for complex notification logic
+      - action: pyscript.handle_health_status_notification
+        data:
+          current_status: "{{ trigger.to_state.state }}"
+          previous_status: "{{ trigger.from_state.state }}"
+          status_attributes: >-
+            {{
+              {
+                'status_text': state_attr('sensor.global_health_status', 'status_text'),
+                'affected_rooms': state_attr('sensor.global_health_status', 'affected_rooms'),
+                'total_error_count': state_attr('sensor.global_health_status', 'total_error_count'),
+                'summary': state_attr('sensor.global_health_status', 'summary')
+              } | to_json
+            }}
+
+  # Manual notification test trigger
+  - id: test_smart_notifications
+    alias: "Test Smart Notifications"
+    description: "Manual trigger to test notification system"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.notification_debug_mode
+        from: "off"
+        to: "on"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.smart_notifications_enabled
+        state: "on"
+    actions:
+      - action: pyscript.test_notification_system
+        data: {}
+      # Auto-reset debug mode
+      - delay: "00:00:05"
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.notification_debug_mode
+
+  # Quiet hours status update
+  - id: update_quiet_hours_status
+    alias: "Update Quiet Hours Status"
+    description: "Track whether we're currently in quiet hours"
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "*"  # Check every minute
+      - trigger: state
+        entity_id: 
+          - input_datetime.quiet_hours_start
+          - input_datetime.quiet_hours_end
+          - input_boolean.quiet_hours_enabled
+    actions:
+      - action: pyscript.update_quiet_hours_status
+        data: {}
+
+# !!! NOTIFICATION SCRIPTS !!!
+
+script:
+  # Manual health notification trigger
+  send_health_notification:
+    alias: "Send Health Notification"
+    description: "Manually trigger a health status notification"
+    fields:
+      force:
+        description: "Force notification regardless of cooldowns"
+        default: false
+        selector:
+          boolean: {}
+    sequence:
+      - action: pyscript.handle_health_status_notification
+        data:
+          current_status: "{{ states('sensor.global_health_status') }}"
+          previous_status: "{{ states('input_text.previous_global_health') }}"
+          force_notification: "{{ force | default(false) }}"
+          status_attributes: >-
+            {{
+              {
+                'status_text': state_attr('sensor.global_health_status', 'status_text'),
+                'affected_rooms': state_attr('sensor.global_health_status', 'affected_rooms'),
+                'total_error_count': state_attr('sensor.global_health_status', 'total_error_count'),
+                'summary': state_attr('sensor.global_health_status', 'summary')
+              } | to_json
+            }}
+
+  # Clear notification cooldowns
+  reset_notification_cooldowns:
+    alias: "Reset Notification Cooldowns"
+    description: "Clear all notification cooldown timers"
+    sequence:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.last_critical_notification
+        data:
+          value: "1970-01-01T00:00:00"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.last_warning_notification
+        data:
+          value: "1970-01-01T00:00:00"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.last_recovery_notification
+        data:
+          value: "1970-01-01T00:00:00"
+      - action: logbook.log
+        data:
+          name: "Smart Notification Framework"
+          message: "🔄 All notification cooldowns have been reset"
+
+  # Configure quiet hours
+  set_quiet_hours:
+    alias: "Set Quiet Hours"
+    description: "Configure quiet hours period"
+    fields:
+      start_time:
+        description: "Quiet hours start time (HH:MM:SS)"
+        default: "22:00:00"
+        selector:
+          time: {}
+      end_time:
+        description: "Quiet hours end time (HH:MM:SS)"
+        default: "07:00:00"
+        selector:
+          time: {}
+    sequence:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.quiet_hours_start
+        data:
+          time: "{{ start_time }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.quiet_hours_end
+        data:
+          time: "{{ end_time }}"
+      - action: logbook.log
+        data:
+          name: "Smart Notification Framework"
+          message: "⏰ Quiet hours updated: {{ start_time }} - {{ end_time }}"
+
+################################################################################
+# INTEGRATION NOTES:
+# 
+# This package integrates with:
+# - Visual Health System (15_visual_health_system.yaml): Uses sensor.global_health_status
+# - ALS Diagnostics Core (13_als_diagnostics_core.yaml): Leverages error feeds
+# - ALS Diagnostics Helpers (12_als_diagnostics_helpers.yaml): Uses room classifications
+#
+# PyScript Services Required:
+# - pyscript.handle_health_status_notification
+# - pyscript.test_notification_system  
+# - pyscript.update_quiet_hours_status
+#
+# Home Assistant 2025.8+ Features Used:
+# - Enhanced notification data structure
+# - Deep link integration via notification actions
+# - Template sensor attribute inheritance
+# - Input datetime helpers for time management
+################################################################################

@@ -1,0 +1,428 @@
+################################################################################
+# VISUAL HEALTH SYSTEM - HEALTH PILL SENSORS v1.0
+# Author: Claude
+# Updated: 2025-09-02 15:28
+# Status: ✅ Complete Implementation
+# Purpose: Room-specific and global health pill sensors with PyScript backend
+################################################################################
+
+# Input helpers for health monitoring test control
+input_boolean:
+  health_monitoring_auto_test:
+    name: "Health Monitoring Auto Test"
+    initial: off
+    icon: mdi:test-tube
+
+# Input texts for health status storage
+input_text:
+  global_health_status:
+    name: "Global Health Status Data"
+    initial: '{"status":"🟩","status_text":"healthy","timestamp":"2025-09-02T00:00:00"}'
+    max: 2000
+
+  health_status_bedroom:
+    name: "Bedroom Health Status"
+    initial: "🟩"
+    max: 10
+
+  health_status_kitchen:
+    name: "Kitchen Health Status"
+    initial: "🟩" 
+    max: 10
+
+  health_status_livingroom:
+    name: "Living Room Health Status"
+    initial: "🟩"
+    max: 10
+
+  health_status_bathroom:
+    name: "Bathroom Health Status"
+    initial: "🟩"
+    max: 10
+
+  health_status_hallway:
+    name: "Hallway Health Status"
+    initial: "🟩"
+    max: 10
+
+  health_status_laundry:
+    name: "Laundry Health Status"
+    initial: "🟩"
+    max: 10
+
+  # Test results storage
+  health_calculation_test_results:
+    name: "Health Calculation Test Results"
+    initial: "No tests run yet"
+    max: 1000
+
+  global_health_test_results:
+    name: "Global Health Test Results"
+    initial: "No tests run yet"
+    max: 1000
+
+  health_attributes_test_results:
+    name: "Health Attributes Test Results"
+    initial: "No tests run yet"
+    max: 1000
+
+  health_monitoring_test_status:
+    name: "Health Monitoring Test Status"
+    initial: "No tests run yet"
+    max: 255
+
+# !!! ROOM-SPECIFIC HEALTH PILL SENSORS !!!
+
+template:
+  - sensor:
+      # Kitchen Health Pill
+      - name: "Kitchen Health Pill"
+        unique_id: kitchen_health_pill_v1
+        availability: >-
+          {{ states('input_text.als_error_feed_kitchen') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {{ states('input_text.health_status_kitchen') | default('🟩') }}
+        attributes:
+          room: "kitchen"
+          error_feed: >-
+            {{ states('input_text.als_error_feed_kitchen') | default('[]') }}
+          last_error: >-
+            {% set feed = states('input_text.als_error_kitchen') | default('') %}
+            {{ feed if feed != '' else 'No recent errors' }}
+          health_color: >-
+            {% set health = states('sensor.kitchen_health_status') | default('🟩') %}
+            {% if health == '🟥' %}red
+            {% elif health == '🟨' %}yellow  
+            {% else %}green
+            {% endif %}
+          icon: >-
+            {% set health = states('sensor.kitchen_health_status') | default('🟩') %}
+            {% if health == '🟥' %}mdi:alert-circle
+            {% elif health == '🟨' %}mdi:alert
+            {% else %}mdi:check-circle
+            {% endif %}
+
+      # Bedroom Health Pill
+      - name: "Bedroom Health Pill"
+        unique_id: bedroom_health_pill_v1
+        availability: >-
+          {{ states('input_text.als_error_feed_bedroom') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {{ states('input_text.health_status_bedroom') | default('🟩') }}
+        attributes:
+          room: "bedroom"
+          error_feed: >-
+            {{ states('input_text.als_error_feed_bedroom') | default('[]') }}
+          last_error: >-
+            {% set feed = states('input_text.als_error_bedroom') | default('') %}
+            {{ feed if feed != '' else 'No recent errors' }}
+          health_color: >-
+            {% set health = states('sensor.bedroom_health_status') | default('🟩') %}
+            {% if health == '🟥' %}red
+            {% elif health == '🟨' %}yellow
+            {% else %}green
+            {% endif %}
+          icon: >-
+            {% set health = states('sensor.bedroom_health_status') | default('🟩') %}
+            {% if health == '🟥' %}mdi:alert-circle
+            {% elif health == '🟨' %}mdi:alert
+            {% else %}mdi:check-circle
+            {% endif %}
+
+      # Living Room Health Pill
+      - name: "Living Room Health Pill"
+        unique_id: livingroom_health_pill_v1
+        availability: >-
+          {{ states('input_text.als_error_feed_livingroom') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {{ states('input_text.health_status_livingroom') | default('🟩') }}
+        attributes:
+          room: "livingroom"
+          error_feed: >-
+            {{ states('input_text.als_error_feed_livingroom') | default('[]') }}
+          last_error: >-
+            {% set feed = states('input_text.als_error_livingroom') | default('') %}
+            {{ feed if feed != '' else 'No recent errors' }}
+          health_color: >-
+            {% set health = states('sensor.livingroom_health_status') | default('🟩') %}
+            {% if health == '🟥' %}red
+            {% elif health == '🟨' %}yellow
+            {% else %}green
+            {% endif %}
+          icon: >-
+            {% set health = states('sensor.livingroom_health_status') | default('🟩') %}
+            {% if health == '🟥' %}mdi:alert-circle
+            {% elif health == '🟨' %}mdi:alert
+            {% else %}mdi:check-circle
+            {% endif %}
+
+      # Bathroom Health Pill
+      - name: "Bathroom Health Pill"
+        unique_id: bathroom_health_pill_v1
+        availability: >-
+          {{ states('input_text.als_error_feed_bathroom') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {{ states('input_text.health_status_bathroom') | default('🟩') }}
+        attributes:
+          room: "bathroom"
+          error_feed: >-
+            {{ states('input_text.als_error_feed_bathroom') | default('[]') }}
+          last_error: >-
+            {% set feed = states('input_text.als_error_bathroom') | default('') %}
+            {{ feed if feed != '' else 'No recent errors' }}
+          health_color: >-
+            {% set health = states('sensor.bathroom_health_status') | default('🟩') %}
+            {% if health == '🟥' %}red
+            {% elif health == '🟨' %}yellow
+            {% else %}green
+            {% endif %}
+          icon: >-
+            {% set health = states('sensor.bathroom_health_status') | default('🟩') %}
+            {% if health == '🟥' %}mdi:alert-circle
+            {% elif health == '🟨' %}mdi:alert
+            {% else %}mdi:check-circle
+            {% endif %}
+
+      # Hallway Health Pill  
+      - name: "Hallway Health Pill"
+        unique_id: hallway_health_pill_v1
+        availability: >-
+          {{ states('input_text.als_error_feed_hallway') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {{ states('input_text.health_status_hallway') | default('🟩') }}
+        attributes:
+          room: "hallway"
+          error_feed: >-
+            {{ states('input_text.als_error_feed_hallway') | default('[]') }}
+          last_error: >-
+            {% set feed = states('input_text.als_error_hallway') | default('') %}
+            {{ feed if feed != '' else 'No recent errors' }}
+          health_color: >-
+            {% set health = states('sensor.hallway_health_status') | default('🟩') %}
+            {% if health == '🟥' %}red
+            {% elif health == '🟨' %}yellow
+            {% else %}green
+            {% endif %}
+          icon: >-
+            {% set health = states('sensor.hallway_health_status') | default('🟩') %}
+            {% if health == '🟥' %}mdi:alert-circle
+            {% elif health == '🟨' %}mdi:alert
+            {% else %}mdi:check-circle
+            {% endif %}
+
+      # Laundry Health Pill
+      - name: "Laundry Health Pill"
+        unique_id: laundry_health_pill_v1
+        availability: >-
+          {{ states('input_text.als_error_feed_laundry') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {{ states('input_text.health_status_laundry') | default('🟩') }}
+        attributes:
+          room: "laundry"
+          error_feed: >-
+            {{ states('input_text.als_error_feed_laundry') | default('[]') }}
+          last_error: >-
+            {% set feed = states('input_text.als_error_laundry') | default('') %}
+            {{ feed if feed != '' else 'No recent errors' }}
+          health_color: >-
+            {% set health = states('sensor.laundry_health_status') | default('🟩') %}
+            {% if health == '🟥' %}red
+            {% elif health == '🟨' %}yellow
+            {% else %}green
+            {% endif %}
+          icon: >-
+            {% set health = states('sensor.laundry_health_status') | default('🟩') %}
+            {% if health == '🟥' %}mdi:alert-circle
+            {% elif health == '🟨' %}mdi:alert
+            {% else %}mdi:check-circle
+            {% endif %}
+
+# !!! GLOBAL HEALTH AGGREGATION SENSOR !!!
+
+  - sensor:
+      # Global System Health Status  
+      - name: "Global Health Status"
+        unique_id: global_health_status_v1
+        availability: >-
+          {{ states('input_text.global_health_status') not in ['unknown', 'unavailable'] }}
+        state: >-
+          {% set global_data = states('input_text.global_health_status') | default('{}') %}
+          {% if global_data != '{}' %}
+            {% set data = global_data | from_json %}
+            {{ data.get('status', '🟩') }}
+          {% else %}
+            🟩
+          {% endif %}
+        attributes:
+          status_text: >-
+            {% set global_data = states('input_text.global_health_status') | default('{}') %}
+            {% if global_data != '{}' %}
+              {% set data = global_data | from_json %}
+              {{ data.get('status_text', 'healthy') }}
+            {% else %}
+              healthy
+            {% endif %}
+          affected_rooms: >-
+            {% set global_data = states('input_text.global_health_status') | default('{}') %}
+            {% if global_data != '{}' %}
+              {% set data = global_data | from_json %}
+              {{ data.get('affected_rooms', []) | join(', ') }}
+            {% else %}
+              None
+            {% endif %}
+          total_error_count: >-
+            {% set global_data = states('input_text.global_health_status') | default('{}') %}
+            {% if global_data != '{}' %}
+              {% set data = global_data | from_json %}
+              {{ data.get('total_error_count', 0) }}
+            {% else %}
+              0
+            {% endif %}
+          healthy_room_count: >-
+            {% set global_data = states('input_text.global_health_status') | default('{}') %}
+            {% if global_data != '{}' %}
+              {% set data = global_data | from_json %}
+              {{ data.get('healthy_rooms', 6) }}
+            {% else %}
+              6
+            {% endif %}
+          summary: >-
+            {% set global_data = states('input_text.global_health_status') | default('{}') %}
+            {% if global_data != '{}' %}
+              {% set data = global_data | from_json %}
+              {{ data.get('summary', 'All systems operational') }}
+            {% else %}
+              All systems operational  
+            {% endif %}
+          last_updated: >-
+            {% set global_data = states('input_text.global_health_status') | default('{}') %}
+            {% if global_data != '{}' %}
+              {% set data = global_data | from_json %}
+              {{ data.get('timestamp', now().isoformat()) }}
+            {% else %}
+              {{ now().isoformat() }}
+            {% endif %}
+          icon: >-
+            {% set global_data = states('input_text.global_health_status') | default('{}') %}
+            {% if global_data != '{}' %}
+              {% set data = global_data | from_json %}
+              {% set status = data.get('status', '🟩') %}
+              {% if status == '🟥' %}mdi:alert-circle
+              {% elif status == '🟨' %}mdi:alert
+              {% else %}mdi:check-circle-outline
+              {% endif %}
+            {% else %}
+              mdi:check-circle-outline
+            {% endif %}
+
+# !!! MANUAL HEALTH TESTING SCRIPTS !!!
+
+script:
+  test_health_pill_system:
+    alias: "Test Health Pill System"
+    sequence:
+      - action: pyscript.run_all_health_monitoring_tests
+        data: {}
+      - delay: "00:00:02"
+      - action: logbook.log
+        data:
+          name: "Visual Health System"
+          message: "🧪 Health pill system test completed - check test result sensors"
+
+  refresh_all_health_pills:
+    alias: "Refresh All Health Pills"
+    sequence:
+      - action: pyscript.refresh_all_health_calculations
+        data: {}
+      - delay: "00:00:02"
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.kitchen_health_pill
+            - sensor.bedroom_health_pill
+            - sensor.livingroom_health_pill
+            - sensor.bathroom_health_pill
+            - sensor.hallway_health_pill
+            - sensor.laundry_health_pill
+            - sensor.global_health_status
+      - action: logbook.log
+        data:
+          name: "Visual Health System"
+          message: "🔄 All health pills refreshed"
+
+  verify_health_system_accuracy:
+    alias: "Verify Health System Accuracy"
+    sequence:
+      # Run comprehensive tests
+      - action: pyscript.run_all_health_monitoring_tests
+        data: {}
+      - delay: "00:00:03"
+      
+      # Refresh all health calculations
+      - action: script.refresh_all_health_pills
+        data: {}
+      - delay: "00:00:02"
+      
+      # Verify test results
+      - condition: template
+        value_template: >-
+          {{ '✅ All' in states('input_text.health_monitoring_test_status') }}
+        
+      - action: persistent_notification.create
+        data:
+          title: "✅ Health System Verification"
+          message: >-
+            Health system verification completed successfully:
+            - Tests: {{ states('input_text.health_monitoring_test_status') }}
+            - Global Status: {{ states('sensor.global_health_status') }} ({{ state_attr('sensor.global_health_status', 'status_text') }})
+            - Affected Rooms: {{ state_attr('sensor.global_health_status', 'affected_rooms') or 'None' }}
+          notification_id: health_verification_success
+
+# !!! REAL-TIME HEALTH MONITORING AUTOMATION !!!
+
+automation:
+  # Auto-refresh health pills when error feeds change
+  - id: health_pills_auto_refresh
+    alias: "Health Pills Auto Refresh"
+    description: "Automatically refresh health pills when error feeds are updated"
+    mode: queued
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id:
+          - input_text.als_error_feed_kitchen
+          - input_text.als_error_feed_bedroom
+          - input_text.als_error_feed_livingroom
+          - input_text.als_error_feed_bathroom
+          - input_text.als_error_feed_hallway
+          - input_text.als_error_feed_laundry
+      - trigger: state
+        entity_id:
+          - input_text.als_error_kitchen
+          - input_text.als_error_bedroom
+          - input_text.als_error_livingroom
+          - input_text.als_error_bathroom
+          - input_text.als_error_hallway
+          - input_text.als_error_laundry
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.from_state.state != trigger.to_state.state }}"
+    actions:
+      - delay: "00:00:01"  # Small delay to avoid rapid-fire updates
+      - action: pyscript.refresh_all_health_calculations
+        data: {}
+
+  # Periodic health system validation
+  - id: periodic_health_validation
+    alias: "Periodic Health System Validation"
+    description: "Run health system tests every 6 hours"
+    triggers:
+      - trigger: time_pattern
+        hours: "/6"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.health_monitoring_auto_test
+        state: "on"
+    actions:
+      - action: script.verify_health_system_accuracy
+        data: {}

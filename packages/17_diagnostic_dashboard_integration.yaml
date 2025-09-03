@@ -1,0 +1,724 @@
+################################################################################
+# DIAGNOSTIC DASHBOARD INTEGRATION v1.0
+# Author: Claude  
+# Updated: 2025-09-02
+# Status: ✅ Complete Implementation - Task 5
+# Purpose: Comprehensive diagnostic dashboard with learning status aggregation,
+#          configuration helpers, manual controls, and system management
+################################################################################
+
+# !!! CONFIGURATION INPUT HELPERS !!!
+
+input_boolean:
+  # System Control Toggles
+  als_diagnostics_enabled:
+    name: "ALS Diagnostics System"
+    initial: true
+    icon: mdi:chart-line-variant
+
+  diagnostic_dashboard_enabled:
+    name: "Diagnostic Dashboard"
+    initial: true
+    icon: mdi:view-dashboard
+
+  als_verbose_logging:
+    name: "Verbose Diagnostics Logging" 
+    initial: false
+    icon: mdi:message-text-outline
+
+  smart_notifications_enabled:
+    name: "Smart Health Notifications"
+    initial: true
+    icon: mdi:bell-outline
+
+  # Notification Configuration
+  notification_debug_mode:
+    name: "Notification Debug Mode"
+    initial: false
+    icon: mdi:bug
+
+  quiet_hours_enabled:
+    name: "Quiet Hours Suppression"
+    initial: true
+    icon: mdi:sleep
+
+  critical_override_quiet_hours:
+    name: "Critical Alerts Override Quiet Hours"
+    initial: true
+    icon: mdi:alert
+
+  # System Learning Features
+  adaptive_error_thresholds:
+    name: "Adaptive Error Thresholds"
+    initial: true
+    icon: mdi:brain
+
+  predictive_health_analysis:
+    name: "Predictive Health Analysis"
+    initial: false
+    icon: mdi:crystal-ball
+
+  # Dashboard Display Options
+  show_error_details:
+    name: "Show Detailed Error Information"
+    initial: true
+    icon: mdi:text-box-outline
+
+  compact_dashboard_view:
+    name: "Compact Dashboard View"
+    initial: false
+    icon: mdi:view-compact
+
+input_number:
+  # Error Management Configuration
+  error_retention_days:
+    name: "Error Retention (Days)"
+    initial: 7
+    min: 1
+    max: 30
+    step: 1
+    icon: mdi:calendar-clock
+
+  max_errors_per_room:
+    name: "Maximum Errors Per Room"
+    initial: 5
+    min: 3
+    max: 20
+    step: 1
+    icon: mdi:counter
+
+  health_check_interval:
+    name: "Health Check Interval (Minutes)"
+    initial: 15
+    min: 5
+    max: 60
+    step: 5
+    icon: mdi:timer
+
+  # Notification Cooldown Periods (minutes)
+  critical_notification_cooldown:
+    name: "Critical Alert Cooldown (Minutes)"
+    initial: 15
+    min: 5
+    max: 120
+    step: 5
+    icon: mdi:timer-alert
+
+  warning_notification_cooldown:
+    name: "Warning Alert Cooldown (Minutes)"
+    initial: 60
+    min: 15
+    max: 240
+    step: 15
+    icon: mdi:timer
+
+  recovery_notification_cooldown:
+    name: "Recovery Alert Cooldown (Minutes)"
+    initial: 30
+    min: 10
+    max: 120
+    step: 10
+    icon: mdi:timer-check
+
+  # Performance Thresholds
+  error_threshold_warning:
+    name: "Error Threshold for Warning"
+    initial: 3
+    min: 1
+    max: 10
+    step: 1
+    icon: mdi:gauge
+
+  error_threshold_critical:
+    name: "Error Threshold for Critical"
+    initial: 5
+    min: 2
+    max: 15
+    step: 1
+    icon: mdi:gauge-full
+
+input_datetime:
+  # Quiet Hours Configuration
+  quiet_hours_start:
+    name: "Quiet Hours Start"
+    has_date: false
+    has_time: true
+    initial: "22:00"
+
+  quiet_hours_end:
+    name: "Quiet Hours End"
+    has_date: false
+    has_time: true
+    initial: "07:00"
+
+input_text:
+  # Diagnostic Status Tracking
+  diagnostic_system_status:
+    name: "Diagnostic System Status"
+    initial: "Initializing..."
+    max: 255
+
+  last_diagnostic_scan:
+    name: "Last Diagnostic Scan"
+    initial: "Never"
+    max: 100
+
+  diagnostic_summary:
+    name: "Diagnostic Summary"
+    initial: "System starting up"
+    max: 500
+
+  # Learning System Status
+  als_learning_status:
+    name: "ALS Learning System Status"
+    initial: '{"active":false,"rooms_learning":[],"last_update":"2025-09-02T00:00:00"}'
+    max: 1000
+
+  learning_performance_metrics:
+    name: "Learning Performance Metrics"
+    initial: '{"accuracy":0,"predictions":0,"corrections":0}'
+    max: 1000
+
+  # Notification Timestamp Tracking
+  last_critical_notification:
+    name: "Last Critical Notification"
+    initial: "1970-01-01T00:00:00"
+    max: 100
+
+  last_warning_notification:
+    name: "Last Warning Notification"
+    initial: "1970-01-01T00:00:00"
+    max: 100
+
+  last_recovery_notification:
+    name: "Last Recovery Notification"
+    initial: "1970-01-01T00:00:00"
+    max: 100
+
+  # Dashboard Control State
+  previous_global_health:
+    name: "Previous Global Health Status"
+    initial: "🟩"
+    max: 10
+
+  notification_suppression_active:
+    name: "Notification Suppression Active"
+    initial: "false"
+    max: 10
+
+  dashboard_refresh_timestamp:
+    name: "Dashboard Last Refresh"
+    initial: "2025-09-02T00:00:00"
+    max: 100
+
+# !!! SYSTEM DIAGNOSTIC SENSOR WITH LEARNING STATUS !!!
+
+template:
+  - sensor:
+      # Main System Diagnostic Sensor
+      - name: "ALS Diagnostic Status"
+        unique_id: als_diagnostic_status_v1
+        availability: >-
+          {{ states('input_boolean.als_diagnostics_enabled') == 'on' }}
+        state: >-
+          {% set global_health = states('sensor.global_health_status') | default('🟩') %}
+          {% set learning_data = states('input_text.als_learning_status') | from_json %}
+          {% set is_learning = learning_data.get('active', false) %}
+          
+          {% if global_health == '🟥' %}
+            {% if is_learning %}critical-learning{% else %}critical{% endif %}
+          {% elif global_health == '🟨' %}
+            {% if is_learning %}warning-learning{% else %}warning{% endif %}
+          {% else %}
+            {% if is_learning %}healthy-learning{% else %}healthy{% endif %}
+          {% endif %}
+        attributes:
+          # Health Status Information
+          health_status: >-
+            {{ states('sensor.global_health_status') | default('🟩') }}
+          health_text: >-
+            {{ state_attr('sensor.global_health_status', 'status_text') | default('healthy') }}
+          affected_rooms: >-
+            {{ state_attr('sensor.global_health_status', 'affected_rooms') | default('None') }}
+          total_errors: >-
+            {{ state_attr('sensor.global_health_status', 'total_error_count') | default(0) | int }}
+          healthy_rooms: >-
+            {{ state_attr('sensor.global_health_status', 'healthy_room_count') | default(6) | int }}
+          
+          # Learning System Status
+          learning_active: >-
+            {% set learning_data = states('input_text.als_learning_status') | from_json %}
+            {{ learning_data.get('active', false) }}
+          learning_rooms: >-
+            {% set learning_data = states('input_text.als_learning_status') | from_json %}
+            {{ learning_data.get('rooms_learning', []) | join(', ') or 'None' }}
+          learning_last_update: >-
+            {% set learning_data = states('input_text.als_learning_status') | from_json %}
+            {{ learning_data.get('last_update', 'Never') }}
+          
+          # Performance Metrics
+          learning_accuracy: >-
+            {% set metrics = states('input_text.learning_performance_metrics') | from_json %}
+            {{ metrics.get('accuracy', 0) }}%
+          total_predictions: >-
+            {% set metrics = states('input_text.learning_performance_metrics') | from_json %}
+            {{ metrics.get('predictions', 0) }}
+          prediction_corrections: >-
+            {% set metrics = states('input_text.learning_performance_metrics') | from_json %}
+            {{ metrics.get('corrections', 0) }}
+          
+          # System Configuration
+          diagnostics_enabled: >-
+            {{ states('input_boolean.als_diagnostics_enabled') == 'on' }}
+          verbose_logging: >-
+            {{ states('input_boolean.als_verbose_logging') == 'on' }}
+          notifications_enabled: >-
+            {{ states('input_boolean.smart_notifications_enabled') == 'on' }}
+          quiet_hours_active: >-
+            {{ states('input_text.notification_suppression_active') == 'true' }}
+          
+          # System Timing
+          last_health_check: >-
+            {{ state_attr('sensor.global_health_status', 'last_updated') | default(now().isoformat()) }}
+          last_diagnostic_scan: >-
+            {{ states('input_text.last_diagnostic_scan') | default('Never') }}
+          uptime_hours: >-
+            {% set start_time = '2025-09-02T00:00:00' %}
+            {% set hours = ((now() - start_time | as_datetime).total_seconds() / 3600) | round(1) %}
+            {{ hours }}
+          
+          # Dashboard URLs
+          health_dashboard_url: "/lovelace/health-overview"
+          diagnostic_dashboard_url: "/lovelace/als-diagnostics"
+          learning_dashboard_url: "/lovelace/als-learning"
+          
+          icon: >-
+            {% set status = states('sensor.als_diagnostic_status') %}
+            {% if 'critical' in status %}mdi:alert-circle
+            {% elif 'warning' in status %}mdi:alert
+            {% elif 'learning' in status %}mdi:brain
+            {% else %}mdi:check-circle-outline
+            {% endif %}
+
+      # Room Diagnostic Summary
+      - name: "Room Diagnostic Summary"
+        unique_id: room_diagnostic_summary_v1
+        state: >-
+          {% set rooms = ['kitchen', 'bedroom', 'livingroom', 'bathroom', 'hallway', 'laundry'] %}
+          {% set healthy = 0 %}
+          {% set warning = 0 %}
+          {% set critical = 0 %}
+          {% for room in rooms %}
+            {% set health = states('sensor.' + room + '_health_pill') | default('🟩') %}
+            {% if health == '🟩' %}
+              {% set healthy = healthy + 1 %}
+            {% elif health == '🟨' %}
+              {% set warning = warning + 1 %}
+            {% else %}
+              {% set critical = critical + 1 %}
+            {% endif %}
+          {% endfor %}
+          {{ healthy }}/{{ rooms | length }} Healthy
+        attributes:
+          total_rooms: 6
+          healthy_count: >-
+            {% set rooms = ['kitchen', 'bedroom', 'livingroom', 'bathroom', 'hallway', 'laundry'] %}
+            {% set healthy = 0 %}
+            {% for room in rooms %}
+              {% set health = states('sensor.' + room + '_health_pill') | default('🟩') %}
+              {% if health == '🟩' %}
+                {% set healthy = healthy + 1 %}
+              {% endif %}
+            {% endfor %}
+            {{ healthy }}
+          warning_count: >-
+            {% set rooms = ['kitchen', 'bedroom', 'livingroom', 'bathroom', 'hallway', 'laundry'] %}
+            {% set warning = 0 %}
+            {% for room in rooms %}
+              {% set health = states('sensor.' + room + '_health_pill') | default('🟩') %}
+              {% if health == '🟨' %}
+                {% set warning = warning + 1 %}
+              {% endif %}
+            {% endfor %}
+            {{ warning }}
+          critical_count: >-
+            {% set rooms = ['kitchen', 'bedroom', 'livingroom', 'bathroom', 'hallway', 'laundry'] %}
+            {% set critical = 0 %}
+            {% for room in rooms %}
+              {% set health = states('sensor.' + room + '_health_pill') | default('🟩') %}
+              {% if health == '🟥' %}
+                {% set critical = critical + 1 %}
+              {% endif %}
+            {% endfor %}
+            {{ critical }}
+          room_status_details: >-
+            {% set rooms = ['kitchen', 'bedroom', 'livingroom', 'bathroom', 'hallway', 'laundry'] %}
+            {% set status = [] %}
+            {% for room in rooms %}
+              {% set health = states('sensor.' + room + '_health_pill') | default('🟩') %}
+              {% set last_error = state_attr('sensor.' + room + '_health_pill', 'last_error') | default('No errors') %}
+              {% set room_status = room + ': ' + health + ' (' + (last_error[:30] + '...' if last_error | length > 30 else last_error) + ')' %}
+              {% set status = status + [room_status] %}
+            {% endfor %}
+            {{ status | join(' | ') }}
+          icon: mdi:view-grid
+
+      # Learning System Performance Sensor
+      - name: "Learning System Performance"
+        unique_id: learning_system_performance_v1
+        state: >-
+          {% set metrics = states('input_text.learning_performance_metrics') | from_json %}
+          {{ metrics.get('accuracy', 0) }}%
+        attributes:
+          is_active: >-
+            {% set learning_data = states('input_text.als_learning_status') | from_json %}
+            {{ learning_data.get('active', false) }}
+          rooms_learning: >-
+            {% set learning_data = states('input_text.als_learning_status') | from_json %}
+            {{ learning_data.get('rooms_learning', []) | length }}
+          total_predictions: >-
+            {% set metrics = states('input_text.learning_performance_metrics') | from_json %}
+            {{ metrics.get('predictions', 0) }}
+          corrections_made: >-
+            {% set metrics = states('input_text.learning_performance_metrics') | from_json %}
+            {{ metrics.get('corrections', 0) }}
+          accuracy_percentage: >-
+            {% set metrics = states('input_text.learning_performance_metrics') | from_json %}
+            {{ metrics.get('accuracy', 0) }}
+          learning_efficiency: >-
+            {% set metrics = states('input_text.learning_performance_metrics') | from_json %}
+            {% set predictions = metrics.get('predictions', 1) %}
+            {% set corrections = metrics.get('corrections', 0) %}
+            {{ ((predictions - corrections) / predictions * 100) | round(1) if predictions > 0 else 0 }}%
+          adaptive_thresholds_enabled: >-
+            {{ states('input_boolean.adaptive_error_thresholds') == 'on' }}
+          predictive_analysis_enabled: >-
+            {{ states('input_boolean.predictive_health_analysis') == 'on' }}
+          icon: mdi:brain
+
+# !!! MANUAL CONTROL INTERFACES AND SCRIPTS !!!
+
+script:
+  # Error Management Scripts
+  clear_all_diagnostic_errors:
+    alias: "Clear All Diagnostic Errors"
+    description: "Clear all error data across all rooms and global systems"
+    sequence:
+      - action: pyscript.clear_room_errors
+        data:
+          room: "all"
+      - delay: "00:00:01"
+      - action: pyscript.refresh_all_health_calculations
+        data: {}
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.diagnostic_summary
+        data:
+          value: "All diagnostic errors cleared at {{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: logbook.log
+        data:
+          name: "ALS Diagnostics"
+          message: "🧹 All diagnostic errors cleared by user"
+
+  clear_room_diagnostic_errors:
+    alias: "Clear Room Diagnostic Errors"
+    description: "Clear errors for a specific room"
+    fields:
+      room:
+        description: "Room to clear errors for"
+        example: "kitchen"
+        required: true
+        selector:
+          select:
+            options:
+              - "kitchen"
+              - "bedroom"
+              - "livingroom"
+              - "bathroom"
+              - "hallway" 
+              - "laundry"
+    sequence:
+      - action: pyscript.clear_room_errors
+        data:
+          room: "{{ room }}"
+      - delay: "00:00:01"
+      - action: pyscript.refresh_all_health_calculations
+        data: {}
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.diagnostic_summary
+        data:
+          value: "{{ room | title }} errors cleared at {{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: logbook.log
+        data:
+          name: "ALS Diagnostics"
+          message: "🧹 {{ room | title }} diagnostic errors cleared by user"
+
+  # System Management Scripts
+  run_full_diagnostic_scan:
+    alias: "Run Full Diagnostic Scan"
+    description: "Comprehensive system diagnostic scan with health refresh"
+    sequence:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.diagnostic_system_status
+        data:
+          value: "Running full diagnostic scan..."
+      
+      # Refresh all health calculations
+      - action: pyscript.refresh_all_health_calculations
+        data: {}
+      - delay: "00:00:02"
+      
+      # Update learning status
+      - action: pyscript.update_learning_system_status
+        data: {}
+      - delay: "00:00:01"
+      
+      # Update diagnostic summary
+      - action: pyscript.generate_diagnostic_summary
+        data: {}
+      - delay: "00:00:01"
+      
+      # Update timestamps
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.last_diagnostic_scan
+        data:
+          value: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.dashboard_refresh_timestamp
+        data:
+          value: "{{ now().isoformat() }}"
+      
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.diagnostic_system_status
+        data:
+          value: "Diagnostic scan completed at {{ now().strftime('%H:%M:%S') }}"
+      
+      - action: persistent_notification.create
+        data:
+          title: "🔍 Diagnostic Scan Complete"
+          message: >-
+            Full system diagnostic scan completed:
+            - Global Health: {{ states('sensor.global_health_status') }} ({{ state_attr('sensor.global_health_status', 'status_text') }})
+            - Room Status: {{ states('sensor.room_diagnostic_summary') }}
+            - Learning Active: {{ state_attr('sensor.als_diagnostic_status', 'learning_active') }}
+            - Scan Time: {{ now().strftime('%Y-%m-%d %H:%M:%S') }}
+          notification_id: diagnostic_scan_complete
+
+  refresh_dashboard_data:
+    alias: "Refresh Dashboard Data"
+    description: "Refresh all dashboard sensors and update display data"
+    sequence:
+      # Refresh health calculations
+      - action: pyscript.refresh_all_health_calculations
+        data: {}
+      
+      # Update all template sensors
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.als_diagnostic_status
+            - sensor.room_diagnostic_summary  
+            - sensor.learning_system_performance
+            - sensor.global_health_status
+            - sensor.kitchen_health_pill
+            - sensor.bedroom_health_pill
+            - sensor.livingroom_health_pill
+            - sensor.bathroom_health_pill
+            - sensor.hallway_health_pill
+            - sensor.laundry_health_pill
+      
+      # Update dashboard timestamp
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.dashboard_refresh_timestamp
+        data:
+          value: "{{ now().isoformat() }}"
+      
+      - action: logbook.log
+        data:
+          name: "ALS Diagnostics Dashboard"
+          message: "🔄 Dashboard data refreshed"
+
+  # Testing and Validation Scripts  
+  test_notification_system:
+    alias: "Test Notification System"
+    description: "Send test notifications to verify system functionality"
+    sequence:
+      - action: pyscript.test_notification_system
+        data: {}
+      - delay: "00:00:02"
+      - action: persistent_notification.create
+        data:
+          title: "🧪 Notification Test"
+          message: "Test notification sent. Check your devices for delivery confirmation."
+          notification_id: notification_test_complete
+
+  validate_diagnostic_accuracy:
+    alias: "Validate Diagnostic Accuracy"
+    description: "Run comprehensive validation of diagnostic system accuracy"
+    sequence:
+      # Run health monitoring tests
+      - action: script.verify_health_system_accuracy
+        data: {}
+      - delay: "00:00:03"
+      
+      # Run full diagnostic scan
+      - action: script.run_full_diagnostic_scan
+        data: {}
+      - delay: "00:00:02"
+      
+      # Validate learning system if active
+      - condition: template
+        value_template: "{{ state_attr('sensor.als_diagnostic_status', 'learning_active') == true }}"
+      - action: pyscript.validate_learning_system_accuracy
+        data: {}
+      
+      - action: persistent_notification.create
+        data:
+          title: "✅ Diagnostic Validation Complete"
+          message: >-
+            Diagnostic system validation completed:
+            - System Status: {{ states('sensor.als_diagnostic_status') }}
+            - Health Tests: {{ states('input_text.health_monitoring_test_status') }}
+            - Global Health: {{ state_attr('sensor.global_health_status', 'status_text') }}
+            - Dashboard Last Updated: {{ states('input_text.dashboard_refresh_timestamp') }}
+          notification_id: diagnostic_validation_complete
+
+# !!! DASHBOARD CONTROL AUTOMATIONS !!!
+
+automation:
+  # Dashboard Auto-Refresh
+  - id: diagnostic_dashboard_auto_refresh
+    alias: "Diagnostic Dashboard Auto Refresh"
+    description: "Automatically refresh dashboard when key data changes"
+    mode: queued
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id:
+          - sensor.global_health_status
+          - input_text.als_learning_status
+          - input_text.learning_performance_metrics
+      - trigger: time_pattern
+        minutes: "/5"  # Refresh every 5 minutes
+    conditions:
+      - condition: state
+        entity_id: input_boolean.diagnostic_dashboard_enabled
+        state: "on"
+    actions:
+      - delay: "00:00:01"  # Small delay to avoid rapid updates
+      - action: script.refresh_dashboard_data
+        data: {}
+
+  # Learning Status Monitor
+  - id: learning_status_monitor
+    alias: "Learning Status Monitor" 
+    description: "Monitor and update ALS learning system status"
+    mode: restart
+    triggers:
+      - trigger: time_pattern
+        minutes: "/2"  # Check every 2 minutes
+    conditions:
+      - condition: state
+        entity_id: input_boolean.als_diagnostics_enabled
+        state: "on"
+    actions:
+      - action: pyscript.update_learning_system_status
+        data: {}
+      - action: pyscript.update_learning_performance_metrics
+        data: {}
+
+  # System Health Status Change Notification Handler
+  - id: health_status_change_handler
+    alias: "Health Status Change Handler"
+    description: "Handle health status changes with smart notifications"
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: sensor.global_health_status
+        from: 
+          - "🟩"
+          - "🟨"
+          - "🟥"
+        to:
+          - "🟩"  
+          - "🟨"
+          - "🟥"
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.from_state.state != trigger.to_state.state }}"
+      - condition: state
+        entity_id: input_boolean.smart_notifications_enabled
+        state: "on"
+    actions:
+      # Wait 30 seconds for status to stabilize
+      - delay: "00:00:30"
+      
+      # Send notification through PyScript handler
+      - action: pyscript.handle_health_status_notification
+        data:
+          current_status: "{{ trigger.to_state.state }}"
+          previous_status: "{{ trigger.from_state.state }}"
+          status_attributes: "{{ trigger.to_state.attributes | to_json }}"
+
+  # Quiet Hours Status Updater
+  - id: quiet_hours_status_updater
+    alias: "Quiet Hours Status Updater"
+    description: "Update quiet hours suppression status"
+    mode: restart
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+      - trigger: state
+        entity_id:
+          - input_boolean.quiet_hours_enabled
+          - input_datetime.quiet_hours_start
+          - input_datetime.quiet_hours_end
+    actions:
+      - action: pyscript.update_quiet_hours_status
+        data: {}
+
+  # Periodic System Maintenance
+  - id: diagnostic_system_maintenance
+    alias: "Diagnostic System Maintenance"
+    description: "Periodic maintenance and cleanup for diagnostic system"
+    triggers:
+      - trigger: time_pattern
+        hours: "/4"  # Every 4 hours
+    conditions:
+      - condition: state
+        entity_id: input_boolean.als_diagnostics_enabled
+        state: "on"
+    actions:
+      - action: pyscript.perform_diagnostic_maintenance
+        data: {}
+      - action: script.refresh_dashboard_data
+        data: {}
+
+  # Configuration Change Handler
+  - id: diagnostic_config_change_handler
+    alias: "Diagnostic Configuration Change Handler"
+    description: "Handle configuration changes and refresh system"
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id:
+          - input_number.error_retention_days
+          - input_number.max_errors_per_room
+          - input_number.health_check_interval
+          - input_number.error_threshold_warning
+          - input_number.error_threshold_critical
+    actions:
+      - delay: "00:00:02"  # Allow configuration to settle
+      - action: script.refresh_dashboard_data
+        data: {}
+      - action: logbook.log
+        data:
+          name: "ALS Diagnostics"
+          message: "⚙️ Configuration updated - dashboard refreshed"

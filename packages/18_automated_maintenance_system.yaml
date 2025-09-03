@@ -1,0 +1,352 @@
+###############################################################################
+# 18. Automated Maintenance System
+# Part of ALS Diagnostics & Alert System
+# 
+# This system provides automated maintenance capabilities including:
+# - Periodic health validation and cleanup
+# - Configurable error retention management
+# - Manual maintenance controls
+# - Performance monitoring
+# - Data buildup prevention
+###############################################################################
+
+# Maintenance Control Inputs
+input_number:
+  maintenance_error_retention_days:
+    name: "Error Data Retention (Days)"
+    min: 1
+    max: 90
+    initial: 7
+    step: 1
+    icon: mdi:calendar-clock
+    
+  maintenance_cleanup_interval_hours:
+    name: "Cleanup Interval (Hours)"
+    min: 1
+    max: 168
+    initial: 24
+    step: 1
+    icon: mdi:clock-outline
+    
+  maintenance_max_error_entries:
+    name: "Max Error Entries Per System"
+    min: 50
+    max: 1000
+    initial: 200
+    step: 50
+    icon: mdi:database-outline
+
+input_boolean:
+  maintenance_auto_cleanup_enabled:
+    name: "Automatic Cleanup Enabled"
+    initial: true
+    icon: mdi:auto-fix
+    
+  maintenance_performance_monitoring:
+    name: "Performance Monitoring Enabled"
+    initial: true
+    icon: mdi:speedometer
+    
+  maintenance_debug_mode:
+    name: "Maintenance Debug Mode"
+    initial: false
+    icon: mdi:bug-check
+
+# Maintenance Status Sensors
+sensor:
+  - platform: template
+    sensors:
+      maintenance_last_cleanup:
+        friendly_name: "Last Cleanup Run"
+        value_template: >
+          {{ states('input_datetime.maintenance_last_cleanup_time') }}
+        icon_template: mdi:broom
+        
+      maintenance_cleanup_status:
+        friendly_name: "Cleanup Status"
+        value_template: >
+          {% if is_state('automation.maintenance_periodic_cleanup', 'on') %}
+            {% if states('counter.maintenance_cleanup_runs') | int > 0 %}
+              Active ({{ states('counter.maintenance_cleanup_runs') }} runs)
+            {% else %}
+              Active (No runs yet)
+            {% endif %}
+          {% else %}
+            Disabled
+          {% endif %}
+        icon_template: >
+          {% if is_state('automation.maintenance_periodic_cleanup', 'on') %}
+            mdi:check-circle
+          {% else %}
+            mdi:close-circle
+          {% endif %}
+          
+      maintenance_system_health:
+        friendly_name: "System Health Score"
+        value_template: >
+          {% set error_count = states('sensor.als_total_error_count') | int %}
+          {% set max_errors = states('input_number.maintenance_max_error_entries') | int %}
+          {% set health_score = ((max_errors - error_count) / max_errors * 100) | round(1) %}
+          {% if health_score < 0 %}0{% else %}{{ health_score }}{% endif %}
+        unit_of_measurement: "%"
+        icon_template: >
+          {% set score = states('sensor.maintenance_system_health') | float %}
+          {% if score >= 90 %}mdi:heart
+          {% elif score >= 70 %}mdi:heart-pulse
+          {% elif score >= 50 %}mdi:heart-half-full
+          {% else %}mdi:heart-broken
+          {% endif %}
+          
+      maintenance_data_size_estimate:
+        friendly_name: "Estimated Data Size"
+        value_template: >
+          {% set total_errors = states('sensor.als_total_error_count') | int %}
+          {% set size_mb = (total_errors * 0.5) | round(2) %}
+          {% if size_mb > 1024 %}
+            {{ (size_mb / 1024) | round(2) }} GB
+          {% else %}
+            {{ size_mb }} MB
+          {% endif %}
+        icon_template: mdi:harddisk
+
+# Maintenance Counters
+counter:
+  maintenance_cleanup_runs:
+    name: "Cleanup Runs"
+    initial: 0
+    step: 1
+    icon: mdi:counter
+    
+  maintenance_errors_cleared:
+    name: "Total Errors Cleared"
+    initial: 0
+    step: 1
+    icon: mdi:delete-sweep
+
+# Maintenance Timestamps
+input_datetime:
+  maintenance_last_cleanup_time:
+    name: "Last Cleanup Time"
+    has_date: true
+    has_time: true
+    
+  maintenance_next_cleanup_time:
+    name: "Next Cleanup Time"
+    has_date: true
+    has_time: true
+
+# PyScript for Maintenance Logic
+pyscript:
+  apps:
+    maintenance_system:
+      file: /config/pyscript/maintenance_system.py
+
+# Maintenance Automations
+automation:
+  # Periodic Health Check and Cleanup (15-minute validation)
+  - id: maintenance_periodic_health_check
+    alias: "Maintenance: Periodic Health Check"
+    description: "Run health validation every 15 minutes"
+    trigger:
+      - platform: time_pattern
+        minutes: "/15"
+    condition:
+      - condition: state
+        entity_id: input_boolean.maintenance_auto_cleanup_enabled
+        state: "on"
+    action:
+      - service: pyscript.maintenance_health_check
+        data:
+          debug_mode: "{{ is_state('input_boolean.maintenance_debug_mode', 'on') }}"
+      - service: logbook.log
+        data:
+          name: "ALS Maintenance"
+          message: "Periodic health check completed"
+          
+  # Automated Cleanup Based on Schedule
+  - id: maintenance_periodic_cleanup
+    alias: "Maintenance: Automated Cleanup"
+    description: "Run automated cleanup based on configured interval"
+    trigger:
+      - platform: time_pattern
+        hours: "/1"  # Check every hour if cleanup is due
+    condition:
+      - condition: state
+        entity_id: input_boolean.maintenance_auto_cleanup_enabled
+        state: "on"
+      - condition: template
+        value_template: >
+          {% set last_cleanup = states('input_datetime.maintenance_last_cleanup_time') %}
+          {% set interval_hours = states('input_number.maintenance_cleanup_interval_hours') | int %}
+          {% if last_cleanup == 'unknown' %}
+            true
+          {% else %}
+            {% set last_time = strptime(last_cleanup, '%Y-%m-%d %H:%M:%S') %}
+            {% set now = now() %}
+            {% set hours_since = (now - last_time).total_seconds() / 3600 %}
+            {{ hours_since >= interval_hours }}
+          {% endif %}
+    action:
+      - service: pyscript.maintenance_automated_cleanup
+        data:
+          retention_days: "{{ states('input_number.maintenance_error_retention_days') | int }}"
+          max_entries: "{{ states('input_number.maintenance_max_error_entries') | int }}"
+          debug_mode: "{{ is_state('input_boolean.maintenance_debug_mode', 'on') }}"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.maintenance_last_cleanup_time
+        data:
+          datetime: "{{ now() }}"
+      - service: counter.increment
+        target:
+          entity_id: counter.maintenance_cleanup_runs
+      - service: logbook.log
+        data:
+          name: "ALS Maintenance"
+          message: "Automated cleanup completed"
+          
+  # Performance Monitoring Alert
+  - id: maintenance_performance_alert
+    alias: "Maintenance: Performance Alert"
+    description: "Alert when system performance is degraded"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.maintenance_system_health
+        below: 50
+        for:
+          minutes: 5
+    condition:
+      - condition: state
+        entity_id: input_boolean.maintenance_performance_monitoring
+        state: "on"
+    action:
+      - service: persistent_notification.create
+        data:
+          title: "ALS System Performance Warning"
+          message: >
+            System health is at {{ states('sensor.maintenance_system_health') }}%.
+            Consider running manual cleanup or adjusting retention settings.
+          notification_id: als_performance_warning
+      - service: logbook.log
+        data:
+          name: "ALS Maintenance"
+          message: "Performance alert triggered - Health: {{ states('sensor.maintenance_system_health') }}%"
+          entity_id: sensor.maintenance_system_health
+          
+  # Data Buildup Prevention
+  - id: maintenance_data_buildup_prevention
+    alias: "Maintenance: Data Buildup Prevention"
+    description: "Prevent excessive data buildup"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.als_total_error_count
+        above: "{{ states('input_number.maintenance_max_error_entries') | int }}"
+    condition:
+      - condition: state
+        entity_id: input_boolean.maintenance_auto_cleanup_enabled
+        state: "on"
+    action:
+      - service: pyscript.maintenance_emergency_cleanup
+        data:
+          target_count: "{{ (states('input_number.maintenance_max_error_entries') | int * 0.8) | int }}"
+          debug_mode: "{{ is_state('input_boolean.maintenance_debug_mode', 'on') }}"
+      - service: persistent_notification.create
+        data:
+          title: "ALS Emergency Cleanup Triggered"
+          message: >
+            Error count exceeded limit. Emergency cleanup performed.
+            Reduced to {{ (states('input_number.maintenance_max_error_entries') | int * 0.8) | int }} entries.
+          notification_id: als_emergency_cleanup
+      - service: logbook.log
+        data:
+          name: "ALS Maintenance"
+          message: "Emergency cleanup triggered - Error count exceeded limit"
+
+# Manual Maintenance Scripts
+script:
+  # Manual Full Cleanup
+  maintenance_manual_full_cleanup:
+    alias: "Manual Full System Cleanup"
+    description: "Manually trigger full system cleanup"
+    sequence:
+      - service: pyscript.maintenance_full_cleanup
+        data:
+          retention_days: "{{ states('input_number.maintenance_error_retention_days') | int }}"
+          debug_mode: "{{ is_state('input_boolean.maintenance_debug_mode', 'on') }}"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.maintenance_last_cleanup_time
+        data:
+          datetime: "{{ now() }}"
+      - service: counter.increment
+        target:
+          entity_id: counter.maintenance_cleanup_runs
+      - service: persistent_notification.create
+        data:
+          title: "Manual Cleanup Completed"
+          message: "Full system cleanup has been completed successfully."
+          notification_id: manual_cleanup_complete
+          
+  # Clear All Error Data
+  maintenance_clear_all_errors:
+    alias: "Clear All Error Data"
+    description: "Clear all stored error data (use with caution)"
+    sequence:
+      - service: pyscript.maintenance_clear_all_errors
+        data:
+          debug_mode: "{{ is_state('input_boolean.maintenance_debug_mode', 'on') }}"
+      - service: counter.reset
+        target:
+          entity_id: counter.maintenance_errors_cleared
+      - service: persistent_notification.create
+        data:
+          title: "All Error Data Cleared"
+          message: "All error data has been permanently cleared from the system."
+          notification_id: all_errors_cleared
+          
+  # Generate Diagnostic Report
+  maintenance_generate_diagnostic_report:
+    alias: "Generate Diagnostic Report"
+    description: "Generate comprehensive system diagnostic report"
+    sequence:
+      - service: pyscript.maintenance_generate_report
+        data:
+          include_performance: "{{ is_state('input_boolean.maintenance_performance_monitoring', 'on') }}"
+          debug_mode: "{{ is_state('input_boolean.maintenance_debug_mode', 'on') }}"
+      - service: persistent_notification.create
+        data:
+          title: "Diagnostic Report Generated"
+          message: "System diagnostic report has been generated and saved."
+          notification_id: diagnostic_report_generated
+          
+  # Reset Maintenance Counters
+  maintenance_reset_counters:
+    alias: "Reset Maintenance Counters"
+    description: "Reset all maintenance counters"
+    sequence:
+      - service: counter.reset
+        target:
+          entity_id:
+            - counter.maintenance_cleanup_runs
+            - counter.maintenance_errors_cleared
+      - service: persistent_notification.create
+        data:
+          title: "Counters Reset"
+          message: "All maintenance counters have been reset."
+          notification_id: counters_reset
+
+# Maintenance Dashboard Card Configuration
+# Add to your dashboard YAML:
+# ---
+# type: entities
+# title: "ALS Maintenance System"
+# entities:
+#   - sensor.maintenance_cleanup_status
+#   - sensor.maintenance_system_health
+#   - sensor.maintenance_data_size_estimate
+#   - input_boolean.maintenance_auto_cleanup_enabled
+#   - input_number.maintenance_error_retention_days
+#   - input_number.maintenance_cleanup_interval_hours
+#   - script.maintenance_manual_full_cleanup
+#   - script.maintenance_clear_all_errors
+#   - script.maintenance_generate_diagnostic_report
