@@ -22,7 +22,8 @@ def load_and_run_pyscript_tests():
         'pyscript/test_pyscript_validation.py',
         'pyscript/test_health_monitoring.py', 
         'pyscript/test_timing_functions.py',
-        'pyscript/test_diagnostics_functions.py'
+        'pyscript/test_diagnostics_functions.py',
+        'pyscript/test_kitchen_wled_day_mode.py'
     ]
     
     # Override the service decorator to handle both cases
@@ -58,7 +59,7 @@ def load_and_run_pyscript_tests():
         'log': log,
         'state': state,
         'task': task,
-        'service': service_obj,  # Use the mock service object, not decorator
+        'service_obj': service_obj,  # Rename to avoid conflict with decorator
         '__builtins__': __builtins__
     }
     
