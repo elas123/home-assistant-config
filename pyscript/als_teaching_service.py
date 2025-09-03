@@ -130,3 +130,169 @@ def als_teach_room(room=None, brightness=None, temperature=None):
     finally:
         if db_conn:
             db_conn.close()
+
+@service("pyscript.als_get_learned_data")
+def als_get_learned_data(room=None):
+    """
+    Get learned data for a specific room from the database.
+    Returns the most recent 20 learned settings for the room.
+    """
+    if room is None:
+        log.error("als_get_learned_data: 'room' parameter is required.")
+        return []
+
+    db_conn = _get_db_connection()
+    if not db_conn:
+        return []
+
+    try:
+        cursor = db_conn.cursor()
+        
+        # Get recent learned data for the room (SQLite syntax)
+        cursor.execute("""
+            SELECT condition_key, brightness_percent, temperature_kelvin, timestamp, COUNT(*) as sample_count
+            FROM adaptive_learning 
+            WHERE room = ?
+            GROUP BY condition_key
+            ORDER BY timestamp DESC
+            LIMIT 20
+        """, (room,))
+        
+        results = cursor.fetchall()
+        learned_data = []
+        
+        for row in results:
+            condition_key, brightness, temperature, timestamp, count = row
+            
+            # Parse condition key for display
+            parts = condition_key.split('_')
+            display_condition = f"{parts[0]} mode"
+            if len(parts) > 1:
+                if parts[1] != "High_Sun":
+                    display_condition += f", {parts[1].replace('_', ' ')}"
+            if len(parts) > 2 and int(parts[2]) > 0:
+                display_condition += f", {parts[2]}% clouds"
+            if len(parts) > 3:
+                display_condition += f", {parts[3]}"
+            
+            learned_entry = {
+                "condition": display_condition,
+                "brightness": brightness,
+                "temperature": temperature,
+                "timestamp": timestamp,
+                "sample_count": count
+            }
+            learned_data.append(learned_entry)
+        
+        log.info(f"Retrieved {len(learned_data)} learned entries for room {room}")
+        return learned_data
+        
+    except sqlite3.Error as e:
+        log.error(f"als_get_learned_data: SQLite error: {e}")
+        return []
+    except Exception as e:
+        log.error(f"als_get_learned_data: unexpected error: {e}")
+        return []
+    finally:
+        if db_conn:
+            db_conn.close()
+
+@service("pyscript.als_get_automation_predictions")  
+def als_get_automation_predictions(room=None):
+    """
+    Generate automation predictions based on learned data patterns.
+    Analyzes time-based patterns to predict what the room will do at different times.
+    """
+    if room is None:
+        log.error("als_get_automation_predictions: 'room' parameter is required.")
+        return []
+
+    db_conn = _get_db_connection()
+    if not db_conn:
+        return []
+
+    try:
+        cursor = db_conn.cursor()
+        
+        # Get all learned data for the room to analyze patterns
+        cursor.execute("""
+            SELECT condition_key, brightness_percent, temperature_kelvin, timestamp
+            FROM adaptive_learning 
+            WHERE room = ?
+            ORDER BY timestamp DESC
+            LIMIT 100
+        """, (room,))
+        
+        results = cursor.fetchall()
+        
+        if len(results) < 3:
+            return [{
+                "time": "Need More Data",
+                "action": "Teach more settings to see predictions",
+                "confidence": 0
+            }]
+        
+        predictions = []
+        
+        # Analyze patterns by home mode
+        mode_patterns = {}
+        for row in results:
+            condition_key, brightness, temperature, timestamp = row
+            parts = condition_key.split('_')
+            mode = parts[0] if parts else "Unknown"
+            
+            if mode not in mode_patterns:
+                mode_patterns[mode] = []
+            mode_patterns[mode].append({
+                "brightness": brightness,
+                "temperature": temperature,
+                "timestamp": timestamp
+            })
+        
+        # Generate predictions for each mode with sufficient data
+        mode_times = {
+            "Night": "11:00 PM - 6:00 AM",
+            "Early Morning": "6:00 AM - 8:00 AM", 
+            "Day": "8:00 AM - 6:00 PM",
+            "Evening": "6:00 PM - 11:00 PM"
+        }
+        
+        for mode, data_points in mode_patterns.items():
+            if len(data_points) >= 2:  # Need at least 2 samples for confidence
+                # Calculate average settings for this mode
+                avg_brightness = sum(d["brightness"] for d in data_points) / len(data_points)
+                avg_temp = None
+                temp_values = [d["temperature"] for d in data_points if d["temperature"]]
+                if temp_values:
+                    avg_temp = sum(temp_values) / len(temp_values)
+                
+                # Calculate confidence based on consistency
+                brightness_variance = sum((d["brightness"] - avg_brightness) ** 2 for d in data_points) / len(data_points)
+                confidence = max(20, min(95, 95 - brightness_variance))
+                
+                # Generate prediction text
+                action = f"Set to {int(avg_brightness)}% brightness"
+                if avg_temp:
+                    action += f" and {int(avg_temp)}K temperature"
+                
+                predictions.append({
+                    "time": mode_times.get(mode, mode),
+                    "action": action,
+                    "confidence": int(confidence)
+                })
+        
+        # Sort by confidence
+        predictions.sort(key=lambda x: x["confidence"], reverse=True)
+        
+        # Limit to top 5 predictions
+        return predictions[:5]
+        
+    except sqlite3.Error as e:
+        log.error(f"als_get_automation_predictions: SQLite error: {e}")
+        return []
+    except Exception as e:
+        log.error(f"als_get_automation_predictions: unexpected error: {e}")
+        return []
+    finally:
+        if db_conn:
+            db_conn.close()
