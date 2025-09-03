@@ -43,6 +43,13 @@ class MockService:
     def call(self, domain, service_name, **kwargs):
         print(f"Service call: {domain}.{service_name} with {kwargs}")
         return True
+    
+    def __call__(self, domain_service, **kwargs):
+        """Make service object callable for direct service calls."""
+        if '.' in domain_service:
+            domain, service_name = domain_service.split('.', 1)
+            return self.call(domain, service_name, **kwargs)
+        return True
 
 # Mock task object
 class MockTask:
