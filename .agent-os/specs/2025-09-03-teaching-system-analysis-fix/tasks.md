@@ -7,15 +7,15 @@ These are the tasks to be completed for the spec detailed in @.agent-os/specs/20
 
 ## Tasks
 
-- [ ] 1. SQLite Storage System Validation and Enhancement
-  - [ ] 1.1 Write tests for existing SQLite database connectivity and operations
-  - [ ] 1.2 Validate current SQLite implementation and database schema
-  - [ ] 1.3 Test SQLite database path accessibility and connection reliability
-  - [ ] 1.4 Remove conflicting input_text storage entities that interfere with SQLite
-  - [ ] 1.5 Enhance existing SQLite operations with proper error handling
-  - [ ] 1.6 Implement database connection retry logic and failsafe mechanisms
-  - [ ] 1.7 Add SQLite database schema validation and ensure table structure is correct
-  - [ ] 1.8 Verify all SQLite storage enhancement tests pass
+- [x] 1. SQLite Storage System Validation and Enhancement
+  - [x] 1.1 Write tests for existing SQLite database connectivity and operations
+  - [x] 1.2 Validate current SQLite implementation and database schema
+  - [x] 1.3 Test SQLite database path accessibility and connection reliability
+  - [x] 1.4 Remove conflicting input_text storage entities that interfere with SQLite
+  - [x] 1.5 Enhance existing SQLite operations with proper error handling
+  - [x] 1.6 Implement database connection retry logic and failsafe mechanisms
+  - [x] 1.7 Add SQLite database schema validation and ensure table structure is correct
+  - [x] 1.8 Verify all SQLite storage enhancement tests pass
 
 - [ ] 2. Template Sensor Resolution and Repair
   - [ ] 2.1 Write tests for template sensor functionality and data accuracy
