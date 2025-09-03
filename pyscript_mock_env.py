@@ -30,13 +30,26 @@ class MockState:
             'input_boolean.pyscript_auto_validation': 'off',
             'input_boolean.run_diagnostics_tests': 'off',
             'input_boolean.run_timing_tests': 'off',
+            'input_select.home_state': 'Day',  # Add default day mode
+            'light.kitchen_main_lights': 'off',
+            'light.sink_wled': 'off',
+            'light.frig_strip': 'off',
         }
+        self._attributes = {}
     
     def get(self, entity_id, default=None):
         return self._states.get(entity_id, default)
     
     def set(self, entity_id, value):
         self._states[entity_id] = value
+    
+    def getattr(self, entity_id):
+        """Get entity attributes."""
+        return self._attributes.get(entity_id, {})
+    
+    def exist(self, entity_id):
+        """Check if entity exists."""
+        return entity_id in self._states
 
 # Mock service object with proper call method
 class MockService:
