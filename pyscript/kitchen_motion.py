@@ -112,11 +112,11 @@ def _apply_for_motion(active: bool, reason: str):
             br = max(1, min(100, int(target_brightness)))  # Clamp to valid range
             _light_on(KITCHEN_MAIN, brightness_pct=br)
             if night_block_lifted:
-                _info(f"Night mode block LIFTED (after 4:45 AM) - main lights ON at {br}% (learned/fallback)")
+                _info(f"🔥 DEBUG: Night mode block LIFTED (after 4:45 AM) - main lights ON at {br}% - time={datetime.now().strftime('%H:%M:%S')}")
             else:
-                _info(f"Main lights ON at {br}% (learned/fallback)")
+                _info(f"🔥 DEBUG: Main lights ON at {br}% - mode={hs} - time={datetime.now().strftime('%H:%M:%S')}")
         else:
-            _info(f"SKIPPING main lights - Night mode before 4:45 AM (WLED only)")
+            _info(f"🔥 DEBUG: SKIPPING main lights - Night mode before 4:45 AM (WLED only) - time={datetime.now().strftime('%H:%M:%S')}")
 
     else:
         # WLED behavior: sink OFF, fridge to night (but NOT in Day mode)

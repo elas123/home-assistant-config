@@ -154,6 +154,8 @@ def morning_ramp_first_motion(sensor=None, timestamp=None):
     First motion after 04:45 while Home State = Night starts the ramp.
     One-per-day guard via input_text.morning_ramp_last_run_date (if present) or daily_motion_lock.
     """
+    log.warning(f"🔥 DEBUG: morning_ramp_first_motion called at {datetime.now().strftime('%H:%M:%S')} - sensor={sensor}")
+    
     if not is_ramp_enabled():
         log.info("[MorningRamp] Ignored: ramp disabled")
         return
@@ -167,7 +169,10 @@ def morning_ramp_first_motion(sensor=None, timestamp=None):
     now = datetime.now()
     hs  = _state('input_select.home_state')
 
+    log.warning(f"🔥 DEBUG: Ramp conditions check - hs={hs}, time={now.strftime('%H:%M:%S')}, need_night_and_after_4_45={hs == 'Night' and now.time() >= time(4,45,0)}")
+
     if hs == 'Night' and now.time() >= time(4,45,0):
+        log.warning(f"🔥 DEBUG: STARTING MORNING RAMP - this will change home state to Early Morning!")
         ramp_controller.start_ramp(sensor, now)
         _mark_ran_today()
     else:
