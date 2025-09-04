@@ -35,6 +35,9 @@ automation:
       - condition: state
         entity_id: input_select.home_state
         state: "Night"
+      - condition: time
+        after: "04:00:00"
+        before: "08:00:00"
     action:
       - action: pyscript.morning_ramp_first_motion
         data:
