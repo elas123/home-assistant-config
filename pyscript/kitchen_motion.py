@@ -99,12 +99,13 @@ def _apply_for_motion(active: bool, reason: str):
         else:
             _info(f"SKIPPING WLEDs - Day mode (no WLEDs during daylight)")
 
-        # Main lights ON - blocked in Night mode EXCEPT after 4:45 AM
+        # Main lights ON - blocked in Night mode EXCEPT during morning window (4:45-8:00 AM)
         night_block_lifted = False
         if hs == "Night":
             now_time = datetime.now().time()
-            morning_threshold = dt_time(4, 45, 0)  # 4:45 AM
-            night_block_lifted = now_time >= morning_threshold
+            morning_start = dt_time(4, 45, 0)  # 4:45 AM
+            morning_end = dt_time(8, 0, 0)     # 8:00 AM
+            night_block_lifted = morning_start <= now_time <= morning_end
         
         if hs != "Night" or night_block_lifted:
             # Use learned brightness + fallbacks (same priority as rest of system)
@@ -112,11 +113,11 @@ def _apply_for_motion(active: bool, reason: str):
             br = max(1, min(100, int(target_brightness)))  # Clamp to valid range
             _light_on(KITCHEN_MAIN, brightness_pct=br)
             if night_block_lifted:
-                _info(f"🔥 DEBUG: Night mode block LIFTED (after 4:45 AM) - main lights ON at {br}% - time={datetime.now().strftime('%H:%M:%S')}")
+                _info(f"🔥 DEBUG: Night mode block LIFTED (morning window 4:45-8:00 AM) - main lights ON at {br}% - time={datetime.now().strftime('%H:%M:%S')}")
             else:
                 _info(f"🔥 DEBUG: Main lights ON at {br}% - mode={hs} - time={datetime.now().strftime('%H:%M:%S')}")
         else:
-            _info(f"🔥 DEBUG: SKIPPING main lights - Night mode before 4:45 AM (WLED only) - time={datetime.now().strftime('%H:%M:%S')}")
+            _info(f"🔥 DEBUG: SKIPPING main lights - Night mode outside morning window (4:45-8:00 AM) - time={datetime.now().strftime('%H:%M:%S')}")
 
     else:
         # WLED behavior: sink OFF, fridge to night (but NOT in Day mode)
