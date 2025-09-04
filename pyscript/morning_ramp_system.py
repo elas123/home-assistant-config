@@ -169,14 +169,20 @@ def morning_ramp_first_motion(sensor=None, timestamp=None):
     now = datetime.now()
     hs  = _state('input_select.home_state')
 
-    log.warning(f"🔥 DEBUG: Ramp conditions check - hs={hs}, time={now.strftime('%H:%M:%S')}, need_night_and_after_4_45={hs == 'Night' and now.time() >= time(4,45,0)}")
+    # FIXED: Proper morning window check instead of broken >= comparison
+    morning_start = time(4, 45, 0)  # 4:45 AM
+    morning_end = time(8, 0, 0)     # 8:00 AM  
+    current_time = now.time()
+    is_morning_window = morning_start <= current_time <= morning_end
 
-    if hs == 'Night' and now.time() >= time(4,45,0):
+    log.warning(f"🔥 DEBUG: Ramp conditions check - hs={hs}, time={now.strftime('%H:%M:%S')}, morning_window={is_morning_window}")
+
+    if hs == 'Night' and is_morning_window:
         log.warning(f"🔥 DEBUG: STARTING MORNING RAMP - this will change home state to Early Morning!")
         ramp_controller.start_ramp(sensor, now)
         _mark_ran_today()
     else:
-        log.info(f"[MorningRamp] Ignored: hs={hs}, now={now.strftime('%H:%M:%S')} (needs Night & >= 04:45)")
+        log.info(f"[MorningRamp] Ignored: hs={hs}, time={now.strftime('%H:%M:%S')} (needs Night mode & morning window 4:45-8:00 AM)")
 
 @service("pyscript.living_room_lamp_turned_off")
 def living_room_lamp_turned_off(lamp=None, timestamp=None):
