@@ -125,12 +125,13 @@ def _apply_for_motion(active: bool, reason: str):
             _light_off(SINK_LIGHT)
             _set_preset(FRIDGE_PRESET, "night")
 
-        # Main lights OFF if configured AND they were turned on (respect Night mode + time)
+        # Main lights OFF if configured AND they were turned on (respect Night mode + morning window)
         night_block_active = False
         if hs == "Night":
             now_time = datetime.now().time()
-            morning_threshold = dt_time(4, 45, 0)  # 4:45 AM
-            night_block_active = now_time < morning_threshold
+            morning_start = dt_time(4, 45, 0)  # 4:45 AM
+            morning_end = dt_time(8, 0, 0)     # 8:00 AM
+            night_block_active = not (morning_start <= now_time <= morning_end)
             
         if TURN_MAIN_OFF_ON_CLEAR and not night_block_active:
             _light_off(KITCHEN_MAIN)
