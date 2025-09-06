@@ -23,7 +23,8 @@ def load_and_run_pyscript_tests():
         'pyscript/test_health_monitoring.py', 
         'pyscript/test_timing_functions.py',
         'pyscript/test_diagnostics_functions.py',
-        'pyscript/test_kitchen_wled_day_mode.py'
+        'pyscript/test_kitchen_wled_day_mode.py',
+        'pyscript/test_evening_mode_reason.py'
     ]
     
     # Override the service decorator to handle both cases
