@@ -315,16 +315,22 @@ template:
           {% set cutoff = states('input_datetime.evening_time_cutoff') %}
           {% set learned = states('input_number.manual_evening_elevation_setting')|float(4) %}
           {% set e_override = is_state('input_boolean.evening_mode_override','on') %}
-          {% if e_override or now() > today_at(cutoff) or (sun < learned and h >= 15) %}
+          {% set current = states('input_select.home_state') %}
+          {# Morning window rules:
+             - Weekdays: keep original 04:50–05:59 Early Morning
+             - Non-workdays (weekends/holidays): treat 06:00–08:59 as Early Morning to avoid false Evening
+          #}
+          {% set morning_window = (workday and ((h == 4 and m >= 50) or h == 5)) or ((not workday) and (6 <= h < 9)) %}
+
+          {# Deterministic Evening only under explicit conditions #}
+          {% if e_override or now() > today_at(cutoff) or (h >= 15 and sun < learned) %}
             Evening
-          {% elif workday and ((h == 4 and m >= 50) or h == 5) %}
+          {% elif morning_window %}
             Early Morning
           {% elif sun >= day_th %}
             Day
-          {% elif is_state('input_select.home_state','Early Morning') %}
-            Early Morning
           {% else %}
-            Evening
+            {{ current }}
           {% endif %}
         icon: >-
           {% set s = this.state %}
