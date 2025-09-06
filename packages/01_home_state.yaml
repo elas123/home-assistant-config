@@ -308,24 +308,18 @@ template:
              and states('input_number.current_day_threshold') not in ['unknown','unavailable'] }}
         state: >-
           {% set h = now().hour %}
-          {% set m = now().minute %}
           {% set sun = states('sensor.sun_elevation_frequent')|float(0) %}
           {% set day_th = states('input_number.current_day_threshold')|float(10) %}
-          {% set workday = is_state('binary_sensor.working_today','on') %}
           {% set cutoff = states('input_datetime.evening_time_cutoff') %}
           {% set learned = states('input_number.manual_evening_elevation_setting')|float(4) %}
           {% set e_override = is_state('input_boolean.evening_mode_override','on') %}
           {% set current = states('input_select.home_state') %}
-          {# Morning window rules:
-             - Weekdays: keep original 04:50–05:59 Early Morning
-             - Non-workdays (weekends/holidays): treat 06:00–08:59 as Early Morning to avoid false Evening
-          #}
-          {% set morning_window = (workday and ((h == 4 and m >= 50) or h == 5)) or ((not workday) and (6 <= h < 9)) %}
+          {% set ramp_active = is_state('input_boolean.sleep_in_ramp_active','on') %}
 
-          {# Deterministic Evening only under explicit conditions #}
+          {# Strict Evening gating: only after earliest-evening hour and explicit conditions #}
           {% if e_override or now() > today_at(cutoff) or (h >= 15 and sun < learned) %}
             Evening
-          {% elif morning_window %}
+          {% elif ramp_active %}
             Early Morning
           {% elif sun >= day_th %}
             Day
